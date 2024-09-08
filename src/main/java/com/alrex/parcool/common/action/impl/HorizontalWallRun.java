@@ -66,11 +66,7 @@ public class HorizontalWallRun extends Action {
 		);
 		bodyYaw = (float) VectorUtil.toYawDegree(lookVec.yRot((float) (differenceAngle / 10)));
 		Vec3 movement = player.getDeltaMovement();
-		BlockPos leanedBlock = new BlockPos(
-				(int) (player.getX() + runningWallDirection.x()),
-				(int) (player.getBoundingBox().minY + player.getBbHeight() * 0.5),
-				(int) (player.getZ() + runningWallDirection.z())
-		);
+		BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, runningWallDirection, 0.5);
 		if (!player.getCommandSenderWorld().isLoaded(leanedBlock)) return;
 		float slipperiness = player.getCommandSenderWorld().getBlockState(leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player);
 		if (slipperiness <= 0.8) {
@@ -231,11 +227,7 @@ public class HorizontalWallRun extends Action {
         if (runningDirection == null || runningWallDirection == null) return;
         Level level = player.level();
         Vec3 pos = player.position();
-        BlockPos leanedBlock = new BlockPos(
-                (int) Math.floor(pos.x() + runningWallDirection.x()),
-                (int) Math.floor(pos.y() + player.getBbHeight() * 0.25),
-                (int) Math.floor(pos.z() + runningWallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, runningWallDirection, 0.25);
         if (!level.isLoaded(leanedBlock)) return;
         float width = player.getBbWidth();
         BlockState blockstate = level.getBlockState(leanedBlock);

@@ -17,6 +17,23 @@ import javax.annotation.Nullable;
 
 public class WorldUtil {
 
+	/// <summary>
+	/// Get the closest block to the relative position from the entity's height.
+	/// </summary>
+	/// <param name="entity">The entity to check.</param>
+	/// <param name="relative2DPosition">The relative position to check. (We drop the Y coordinate)</param>
+	/// <param name="heightFraction">The percentage of the player's height</param>
+	/// <returns>The closest block to the relative position from the entity's height.</returns>
+	public static BlockPos getClosestBlockToRelPositionFromEntityHeight(LivingEntity entity, Vec3 relative2DPosition, double heightFraction) {
+		Vec3 entityPos = entity.position();
+		double yPos = entity.getBoundingBox().minY + entity.getBbHeight() * heightFraction;
+
+        return new BlockPos(
+                (int) Math.floor(entityPos.x() + relative2DPosition.x()),
+                (int) Math.floor(entityPos.y() + yPos),
+                (int) Math.floor(entityPos.z() + relative2DPosition.z()));
+	}
+
 	public static Vec3 getRunnableWall(LivingEntity entity, double range) {
 		double width = entity.getBbWidth() * 0.4f;
 		double wallX = 0;

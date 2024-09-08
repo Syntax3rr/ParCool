@@ -61,11 +61,7 @@ public class VerticalWallRun extends Action {
 			if (wall.dot(VectorUtil.fromYawDegree(player.getYHeadRot())) > 0.93) {
 				double height = WorldUtil.getWallHeight(player, wall, player.getBbHeight() * 2.2, 0.2);
 				if (height > 2.3) {
-					BlockPos targetBlock = new BlockPos(
-							(int) (player.getX() + wall.x()),
-							(int) (player.getBoundingBox().minY + player.getBbHeight() * 0.5),
-							(int) (player.getZ() + wall.z())
-					);
+					BlockPos targetBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wall, 0.5);
 					if (!player.getCommandSenderWorld().isLoaded(targetBlock)) return false;
 					float slipperiness = player.getCommandSenderWorld().getBlockState(targetBlock).getFriction(player.getCommandSenderWorld(), targetBlock, player);
 					startInfo.putDouble(height);
@@ -139,11 +135,7 @@ public class VerticalWallRun extends Action {
         if (wallDirection == null) return;
         Level level = player.level();
         Vec3 pos = player.position();
-        BlockPos leanedBlock = new BlockPos(
-                (int) Math.floor(pos.x() + wallDirection.x()),
-                (int) Math.floor(pos.y() + player.getBbHeight() * 0.25),
-                (int) Math.floor(pos.z() + wallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
         if (!level.isLoaded(leanedBlock)) return;
         float width = player.getBbWidth();
         BlockState blockstate = level.getBlockState(leanedBlock);

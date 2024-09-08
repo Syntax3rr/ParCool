@@ -98,11 +98,7 @@ public class WallSlide extends Action {
 	public void onWorkingTick(Player player, Parkourability parkourability, IStamina stamina) {
 		leanedWallDirection = WorldUtil.getWall(player);
 		if (leanedWallDirection != null) {
-			BlockPos leanedBlock = new BlockPos(
-					(int) (player.getX() + leanedWallDirection.x),
-					(int) (player.getY() + player.getBbHeight() * 0.75),
-					(int) (player.getZ() + leanedWallDirection.z)
-			);
+			BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, leanedWallDirection, 0.75);
 			if (!player.getCommandSenderWorld().isLoaded(leanedBlock)) return;
 			float slipperiness = player.getCommandSenderWorld().getBlockState(leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player);
 			slipperiness = (float) Math.sqrt(slipperiness);
@@ -130,11 +126,7 @@ public class WallSlide extends Action {
         if (player.getRandom().nextBoolean()) return;
         Level level = player.level();
         Vec3 pos = player.position();
-        BlockPos leanedBlock = new BlockPos(
-                (int) Math.floor(pos.x() + leanedWallDirection.x()),
-                (int) Math.floor(pos.y() + player.getBbHeight() * 0.25),
-                (int) Math.floor(pos.z() + leanedWallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, leanedWallDirection, 0.25);
         if (!level.isLoaded(leanedBlock)) return;
         float width = player.getBbWidth();
         BlockState blockstate = level.getBlockState(leanedBlock);

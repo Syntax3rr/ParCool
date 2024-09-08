@@ -201,11 +201,7 @@ public class WallJump extends Action {
             player.playSound(SoundEvents.WALL_JUMP.get(), 1f, 1f);
         Vec3 jumpDirection = new Vec3(startData.getDouble(), startData.getDouble(), startData.getDouble());
 		Vec3 wallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
-        BlockPos leanedBlock = new BlockPos(
-                (int) Math.floor(player.getX() + wallDirection.x()),
-                (int) Math.floor(player.getBoundingBox().minY + player.getBbHeight() * 0.25),
-                (int) Math.floor(player.getZ() + wallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
         float slipperiness = player.level().isLoaded(leanedBlock) ?
                 player.level().getBlockState(leanedBlock).getFriction(player.level(), leanedBlock, player)
                 : 1f;
@@ -238,11 +234,7 @@ public class WallJump extends Action {
     private void spawnJumpParticles(Player player, Vec3 wallDirection, Vec3 jumpDirection) {
         Level level = player.level();
         Vec3 pos = player.position();
-        BlockPos leanedBlock = new BlockPos(
-                (int) Math.floor(pos.x() + wallDirection.x()),
-                (int) Math.floor(pos.y() + player.getBbHeight() * 0.25),
-                (int) Math.floor(pos.z() + wallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
         if (!level.isLoaded(leanedBlock)) return;
         float width = player.getBbWidth();
         BlockState blockstate = level.getBlockState(leanedBlock);

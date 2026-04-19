@@ -186,11 +186,7 @@ public class WallJump extends Action {
 		Vec3 wallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
 		Vec3 motion = player.getDeltaMovement();
 
-		BlockPos leanedBlock = new BlockPos(
-				Mth.floor(player.getX() + wallDirection.x()),
-				Mth.floor(player.getBoundingBox().minY + player.getBbHeight() * 0.25),
-				Mth.floor(player.getZ() + wallDirection.z())
-		);
+		BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
 		float slipperiness = player.getCommandSenderWorld().isLoaded(leanedBlock) ?
 				player.getCommandSenderWorld().getBlockState(leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
 				: 0.6f;
@@ -230,11 +226,7 @@ public class WallJump extends Action {
             player.playSound(SoundEvents.WALL_JUMP.get(), 1f, 1f);
         Vec3 jumpDirection = new Vec3(startData.getDouble(), startData.getDouble(), startData.getDouble());
 		Vec3 wallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
-        BlockPos leanedBlock = new BlockPos(
-				Mth.floor(player.getX() + wallDirection.x()),
-				Mth.floor(player.getBoundingBox().minY + player.getBbHeight() * 0.25),
-				Mth.floor(player.getZ() + wallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
         float slipperiness = player.level().isLoaded(leanedBlock) ?
                 player.level().getBlockState(leanedBlock).getFriction(player.level(), leanedBlock, player)
                 : 1f;
@@ -268,11 +260,7 @@ public class WallJump extends Action {
 		if (!ParCoolConfig.Client.Booleans.EnableActionParticles.get()) return;
 		Level level = player.level();
 		Vec3 pos = player.position();
-        BlockPos leanedBlock = new BlockPos(
-				Mth.floor(pos.x() + wallDirection.x()),
-				Mth.floor(pos.y() + player.getBbHeight() * 0.25),
-				Mth.floor(pos.z() + wallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
 		if (!level.isLoaded(leanedBlock)) return;
 		float width = player.getBbWidth();
 		BlockState blockstate = level.getBlockState(leanedBlock);

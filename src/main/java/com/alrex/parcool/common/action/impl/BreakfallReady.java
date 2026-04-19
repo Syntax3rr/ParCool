@@ -23,7 +23,8 @@ public class BreakfallReady extends Action {
 		if (!(player instanceof LocalPlayer localPlayer)) return;
         boolean playSound = false;
 		if (justTimed && ParCoolConfig.Client.Booleans.EnableJustTimeEffectOfBreakfall.get()) {
-			if (ParCoolConfig.Client.Booleans.EnableActionSounds.get())
+			if (ParCoolConfig.Client.Booleans.EnableActionSounds.get()
+					&& ParCoolConfig.Client.Booleans.EnableSoundOfJustTimeBreakfall.get())
 				player.playSound(SoundEvents.BREAKFALL_JUST_TIME.get(), 1, 1);
 			if (ParCoolConfig.Client.Booleans.EnableActionParticles.get()
 					&& ParCoolConfig.Client.Booleans.EnableActionParticlesOfJustTimeBreakfall.get()

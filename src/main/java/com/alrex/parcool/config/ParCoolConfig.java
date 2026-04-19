@@ -174,6 +174,10 @@ public class ParCoolConfig {
 					ConfigGroup.Other, "Enable particles triggered by just-time breakfall",
 					"enable_particles_jt_breakfall", true
 			),
+			EnableSoundOfJustTimeBreakfall(
+					ConfigGroup.Other, "Enable sound triggered by just-time breakfall",
+					"enable_sound_jt_breakfall", true
+			),
             Enable3DRenderingForZipline(
                     ConfigGroup.Other, "Enable block like rendering of zipline",
                     "enable_3d_render_zipline", true

@@ -23,6 +23,16 @@ import java.util.List;
 
 public class WorldUtil {
 
+	public static BlockPos getClosestBlockToRelPositionFromEntityHeight(
+			LivingEntity entity, Vec3 relative2DPosition, double heightFraction) {
+		Vec3 entityPos = entity.position();
+		double yPos = entity.getBoundingBox().minY + entity.getBbHeight() * heightFraction;
+		return new BlockPos(
+				(int) Math.floor(entityPos.x() + relative2DPosition.x()),
+				(int) Math.floor(yPos),
+				(int) Math.floor(entityPos.z() + relative2DPosition.z()));
+	}
+
 	@Nullable
 	public static Vec3 getRunnableWall(LivingEntity entity, double range) {
 		double width = entity.getBbWidth() * 0.4f;

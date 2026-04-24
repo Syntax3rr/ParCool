@@ -9,6 +9,7 @@ import com.alrex.parcool.common.action.BehaviorEnforcer;
 import com.alrex.parcool.common.action.StaminaConsumeTiming;
 import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
+import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.config.ParCoolConfig;
 import com.alrex.parcool.utilities.VectorUtil;
 import com.alrex.parcool.utilities.WorldUtil;
@@ -117,16 +118,31 @@ public class ClingToCliff extends Action {
 	@Override
 	public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
+        // Base motion is the sub-level's localY displacement only: in-plane co-movement is
+        // handled by Sable floor tracking (adding it here would double-count), and pressing
+        // horizontally into the wall normal would fight collision resolution.
+        SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.5 + 0.5);
+        Vec3 baseDelta = frame.localY().scale(frame.verticalComponent(frame.displacement()));
         if (KeyBindings.isLeftAndRightDown()) {
-			player.setDeltaMovement(0, 0, 0);
+			player.setDeltaMovement(baseDelta);
 		} else {
 			if (clingWallDirection != null && facingDirection == FacingDirection.ToWall) {
-				Vec3 vec = clingWallDirection.yRot((float) (Math.PI / 2)).normalize().scale(0.1);
-                if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(vec);
-                else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(vec.reverse());
-				else player.setDeltaMovement(0, 0, 0);
+				// Edge traversal = cross(up, wallNormal).  For a vanilla or Y-rotated sub-level
+				// this equals yRot(PI/2) on the wall normal (purely horizontal).  For a pitched
+				// sub-level the result gains a Y component so movement follows the tilted edge.
+				Vec3 wn = clingWallDirection.normalize();
+				Vec3 up = frame.localY();
+				Vec3 traversal = new Vec3(
+						up.y() * wn.z() - up.z() * wn.y(),
+						up.z() * wn.x() - up.x() * wn.z(),
+						up.x() * wn.y() - up.y() * wn.x()
+				).normalize();
+				Vec3 vec = traversal.scale(0.1);
+                if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(vec.add(baseDelta));
+                else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(vec.reverse().add(baseDelta));
+				else player.setDeltaMovement(baseDelta);
 			} else {
-				player.setDeltaMovement(0, 0, 0);
+				player.setDeltaMovement(baseDelta);
 			}
 		}
 	}

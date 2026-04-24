@@ -9,6 +9,7 @@ import com.alrex.parcool.common.action.BehaviorEnforcer;
 import com.alrex.parcool.common.action.StaminaConsumeTiming;
 import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
+import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.config.ParCoolConfig;
 import com.alrex.parcool.utilities.WorldUtil;
 import net.minecraft.core.BlockPos;
@@ -150,11 +151,14 @@ public class WallJump extends Action {
 			type = WallJumpAnimationType.SwingLeftArm;
 		}
 
+        // Up-boost along the sub-level's localY so jumps launch "up relative to the deck"
+        // on pitched or side-flipped sub-levels, not straight up in world space.
+        SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
         double lookAngleY = player.getLookAngle().normalize().y();
         if (lookAngleY > 0.5) { // Looking upward
-            jumpDirection = jumpDirection.add(0, lookAngleY * 2, 0).normalize();
+            jumpDirection = jumpDirection.add(frame.localY().scale(lookAngleY * 2)).normalize();
         } else {
-            jumpDirection = jumpDirection.add(0, 1, 0).normalize();
+            jumpDirection = jumpDirection.add(frame.localY()).normalize();
         }
 		startInfo
 				.putDouble(jumpDirection.x())
@@ -188,21 +192,23 @@ public class WallJump extends Action {
 
 		BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
 		float slipperiness = player.getCommandSenderWorld().isLoaded(leanedBlock) ?
-				player.getCommandSenderWorld().getBlockState(leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
+				WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
 				: 0.6f;
 
-		double ySpeed;
+		// Compose in the sub-level's frame so the launch impulse points "up relative to the
+		// deck" (localY), not world-Y.  Reduces to the original expression on a flat world.
+		SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
+		double motionUp = frame.verticalComponent(motion);
+		double jumpUp = frame.verticalComponent(jumpMotion);
+		double newUp;
 		if (slipperiness > 0.9) {// icy blocks
-			ySpeed = motion.y();
+			newUp = motionUp;
 		} else {
-            ySpeed = motion.y() > jumpMotion.y() ? motion.y + jumpMotion.y() : jumpMotion.y();
-            spawnJumpParticles(player, wallDirection, jumpDirection);
+			newUp = motionUp > jumpUp ? motionUp + jumpUp : jumpUp;
+			spawnJumpParticles(player, wallDirection, jumpDirection);
 		}
-		player.setDeltaMovement(
-                motion.x() + jumpMotion.x(),
-				ySpeed,
-                motion.z() + jumpMotion.z()
-		);
+		Vec3 floorMotion = frame.projectOntoFloor(motion).add(frame.projectOntoFloor(jumpMotion));
+		player.setDeltaMovement(frame.applyDisplacement(floorMotion.add(frame.localY().scale(newUp))));
 
 		WallJumpAnimationType type = WallJumpAnimationType.fromCode(startData.get());
 		Animation animation = Animation.get(player);
@@ -228,7 +234,7 @@ public class WallJump extends Action {
 		Vec3 wallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
         BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
         float slipperiness = player.level().isLoaded(leanedBlock) ?
-                player.level().getBlockState(leanedBlock).getFriction(player.level(), leanedBlock, player)
+                WorldUtil.getBlockStateAt(player.level(), leanedBlock).getFriction(player.level(), leanedBlock, player)
                 : 1f;
         if (slipperiness <= 0.9) {// icy blocks
             spawnJumpParticles(player, wallDirection, jumpDirection);

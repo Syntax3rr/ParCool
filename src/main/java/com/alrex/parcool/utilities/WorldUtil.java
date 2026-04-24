@@ -2,6 +2,8 @@ package com.alrex.parcool.utilities;
 
 import com.alrex.parcool.common.action.impl.HangDown;
 import com.alrex.parcool.common.tags.BlockTags;
+import com.alrex.parcool.compat.SableCompat;
+import com.alrex.parcool.compat.SubLevelHandle;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.Mth;
@@ -23,6 +25,39 @@ import java.util.List;
 
 public class WorldUtil {
 
+	// Returns true when an AABB is physically blocked — either by vanilla world geometry
+	// or by a sable sub-level block at an arbitrary orientation.
+	private static boolean isBlocked(Level level, AABB aabb) {
+		return !level.noCollision(aabb)
+			|| (SableCompat.isLoaded() && SableCompat.hasSubLevelCollision(level, aabb));
+	}
+
+	private static boolean isBlocked(Level level, Entity entity, AABB aabb) {
+		return !level.noCollision(entity, aabb)
+			|| (SableCompat.isLoaded() && SableCompat.hasSubLevelCollision(level, aabb));
+	}
+
+	// Expands an AABB in an arbitrary (possibly non-axis-aligned) direction by distance.
+	// Equivalent to expandTowards but works for diagonal/3D directions.
+	private static AABB expandInDirection(AABB box, Vec3 dir, double distance) {
+		Vec3 d = dir.normalize().scale(distance);
+		return new AABB(
+				Math.min(box.minX, box.minX + d.x()), Math.min(box.minY, box.minY + d.y()), Math.min(box.minZ, box.minZ + d.z()),
+				Math.max(box.maxX, box.maxX + d.x()), Math.max(box.maxY, box.maxY + d.y()), Math.max(box.maxZ, box.maxZ + d.z())
+		);
+	}
+
+	// Returns the BlockState at a world position, checking sable sub-levels when the
+	// vanilla block is air (sub-level blocks are not in the main world's chunk data).
+	public static BlockState getBlockStateAt(Level level, BlockPos pos) {
+		BlockState state = level.getBlockState(pos);
+		if (state.isAir() && SableCompat.isLoaded()) {
+			BlockState subState = SableCompat.getSubLevelBlockState(level, pos);
+			if (subState != null) return subState;
+		}
+		return state;
+	}
+
 	public static BlockPos getClosestBlockToRelPositionFromEntityHeight(
 			LivingEntity entity, Vec3 relative2DPosition, double heightFraction) {
 		Vec3 entityPos = entity.position();
@@ -35,6 +70,46 @@ public class WorldUtil {
 
 	@Nullable
 	public static Vec3 getRunnableWall(LivingEntity entity, double range) {
+		Level level = entity.level();
+
+		// Probe in the sub-level's local coordinate system: treat the player as upright in
+		// local (local-Y is up), build hitbox-sized boxes around their local position, and
+		// query the sub-level's own Level directly with hasLocalCollision.  This avoids the
+		// axis-aligned bound-enlargement that transformAABBToLocal introduces for rotated
+		// sub-levels and makes probe geometry match what the player would actually reach
+		// when standing on that sub-level (relevant for side-flipped sub-levels where the
+		// local floor is a world-vertical wall).
+		if (SableCompat.isLoaded()) {
+			SubLevelHandle handle = SableCompat.firstSubLevelInRange(level, entity.getBoundingBox().inflate(range + 0.5));
+			if (handle != null) {
+				Vec3 pLocal = SableCompat.worldToLocal(handle, entity.position());
+				double w = entity.getBbWidth() * 0.4;
+				double h = entity.getBbHeight();
+				AABB localBot = new AABB(pLocal.x-w, pLocal.y,          pLocal.z-w, pLocal.x+w, pLocal.y+h*0.30, pLocal.z+w);
+				AABB localTop = new AABB(pLocal.x-w, pLocal.y+h*0.85,   pLocal.z-w, pLocal.x+w, pLocal.y+h,      pLocal.z+w);
+				double probe = range + 0.15;
+				int xDir = 0, zDir = 0;
+				for (int[] p : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
+					AABB sideExp = localBot.expandTowards(p[0]*probe, 0, p[1]*probe);
+					AABB topExp  = localTop.expandTowards(p[0]*probe, 0, p[1]*probe);
+					if (SableCompat.hasLocalCollision(handle, sideExp)
+							&& SableCompat.hasLocalCollision(handle, topExp)) {
+						xDir += p[0]; zDir += p[1];
+					}
+				}
+				if (xDir != 0 || zDir != 0) {
+					Vec3 worldDir = SableCompat.localDirectionToWorld(handle, new Vec3(xDir, 0, zDir));
+					Vec3 horiz = new Vec3(worldDir.x(), 0, worldDir.z());
+					// Walls whose world direction is purely world-vertical can't round-trip
+					// through the downstream 2-double storage — skip gracefully.
+					if (horiz.lengthSqr() >= 1e-4) {
+						return horiz.normalize().scale(Math.sqrt(xDir*xDir + zDir*zDir));
+					}
+				}
+			}
+		}
+
+		// Vanilla world-axis detection (vanilla blocks only — sable already handled above).
 		double width = entity.getBbWidth() * 0.4f;
 		double wallX = 0;
 		double wallZ = 0;
@@ -59,21 +134,13 @@ public class WorldUtil {
 				)
 		);
 
-		if (boxes.stream().noneMatch(box -> entity.level().noCollision(box.expandTowards(range, 0, 0)))) {
-			wallX++;
-		}
-		if (boxes.stream().noneMatch(box -> entity.level().noCollision(box.expandTowards(-range, 0, 0)))) {
-			wallX--;
-		}
-		if (boxes.stream().noneMatch(box -> entity.level().noCollision(box.expandTowards(0, 0, range)))) {
-			wallZ++;
-		}
-		if (boxes.stream().noneMatch(box -> entity.level().noCollision(box.expandTowards(0, 0, -range)))) {
-			wallZ--;
-		}
-		if (wallX == 0 && wallZ == 0) return null;
+		if (boxes.stream().allMatch(box -> isBlocked(level, box.expandTowards(range, 0, 0))))  wallX++;
+		if (boxes.stream().allMatch(box -> isBlocked(level, box.expandTowards(-range, 0, 0)))) wallX--;
+		if (boxes.stream().allMatch(box -> isBlocked(level, box.expandTowards(0, 0, range))))  wallZ++;
+		if (boxes.stream().allMatch(box -> isBlocked(level, box.expandTowards(0, 0, -range)))) wallZ--;
+		if (wallX != 0 || wallZ != 0) return new Vec3(wallX, 0, wallZ);
 
-		return new Vec3(wallX, 0, wallZ);
+		return null;
 	}
 
 	@Nullable
@@ -83,6 +150,40 @@ public class WorldUtil {
 
 	@Nullable
 	public static Vec3 getWall(LivingEntity entity, double range) {
+		Level levelW = entity.level();
+
+		// Same local-frame pattern as getRunnableWall: probe boxes built in the sub-level's
+		// local coordinates so rotation doesn't enlarge the query volume.
+		if (SableCompat.isLoaded()) {
+			SubLevelHandle handle = SableCompat.firstSubLevelInRange(levelW, entity.getBoundingBox().inflate(range + 0.5));
+			if (handle != null) {
+				Vec3 pLocal = SableCompat.worldToLocal(handle, entity.position());
+				double wL = entity.getBbWidth() * 0.49;
+				double h = entity.getBbHeight();
+				double halfH = h / 2.0;
+				AABB localBot = new AABB(pLocal.x-wL, pLocal.y,         pLocal.z-wL, pLocal.x+wL, pLocal.y+halfH, pLocal.z+wL);
+				AABB localTop = new AABB(pLocal.x-wL, pLocal.y+halfH,   pLocal.z-wL, pLocal.x+wL, pLocal.y+h,     pLocal.z+wL);
+				double probe = range + 0.15;
+				int xDir = 0, zDir = 0;
+				for (int[] p : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
+					AABB sideExp = localBot.expandTowards(p[0]*probe, 0, p[1]*probe);
+					AABB topExp  = localTop.expandTowards(p[0]*probe, 0, p[1]*probe);
+					if (SableCompat.hasLocalCollision(handle, sideExp)
+							&& SableCompat.hasLocalCollision(handle, topExp)) {
+						xDir += p[0]; zDir += p[1];
+					}
+				}
+				if (xDir != 0 || zDir != 0) {
+					Vec3 worldDir = SableCompat.localDirectionToWorld(handle, new Vec3(xDir, 0, zDir));
+					Vec3 horiz = new Vec3(worldDir.x(), 0, worldDir.z());
+					if (horiz.lengthSqr() >= 1e-4) {
+						return horiz.normalize().scale(Math.sqrt(xDir*xDir + zDir*zDir));
+					}
+				}
+			}
+		}
+
+		// Vanilla world-axis detection.
 		final double width = entity.getBbWidth() * 0.49;
 		double wallX = 0;
 		double wallZ = 0;
@@ -102,21 +203,13 @@ public class WorldUtil {
 			));
 		}
 
-		if (boxes.stream().noneMatch(box -> entity.level().noCollision(box.expandTowards(range, 0, 0)))) {
-			wallX++;
-		}
-		if (boxes.stream().noneMatch(box -> entity.level().noCollision(box.expandTowards(-range, 0, 0)))) {
-			wallX--;
-		}
-		if (boxes.stream().noneMatch(box -> entity.level().noCollision(box.expandTowards(0, 0, range)))) {
-			wallZ++;
-		}
-		if (boxes.stream().noneMatch(box -> entity.level().noCollision(box.expandTowards(0, 0, -range)))) {
-			wallZ--;
-		}
-		if (wallX == 0 && wallZ == 0) return null;
+		if (boxes.stream().allMatch(box -> isBlocked(levelW, box.expandTowards(range, 0, 0))))  wallX++;
+		if (boxes.stream().allMatch(box -> isBlocked(levelW, box.expandTowards(-range, 0, 0)))) wallX--;
+		if (boxes.stream().allMatch(box -> isBlocked(levelW, box.expandTowards(0, 0, range))))  wallZ++;
+		if (boxes.stream().allMatch(box -> isBlocked(levelW, box.expandTowards(0, 0, -range)))) wallZ--;
+		if (wallX != 0 || wallZ != 0) return new Vec3(wallX, 0, wallZ);
 
-		return new Vec3(wallX, 0, wallZ);
+		return null;
 	}
 
 	@Nullable
@@ -145,16 +238,53 @@ public class WorldUtil {
 				pos.y() + baseLine + entity.getBbHeight(),
 				pos.z() + d
 		);
-		if (!world.noCollision(entity, baseBoxBottom.expandTowards(distance, 0, 0)) && world.noCollision(entity, baseBoxTop.expandTowards((distance + 1.8), 0, 0))) {
+		// Sable-first: probe in local axis directions so sloped sub-level walls don't fool
+		// world-axis probes into looking like vaultable steps.
+		if (SableCompat.isLoaded()) {
+			Vec3[] localAxes = SableCompat.getNearbySubLevelLocalXZAxes(world, entity.getBoundingBox().inflate(distance + 1.0));
+			Vec3 lx = localAxes[0], lz = localAxes[1];
+			boolean sableNearby = false;
+			for (Vec3 dir : new Vec3[]{lx, lx.reverse(), lz, lz.reverse()}) {
+				if (SableCompat.hasSubLevelCollision(world, expandInDirection(entity.getBoundingBox(), dir, distance + 1.0))) {
+					sableNearby = true;
+					break;
+				}
+			}
+			if (sableNearby) {
+				// Use bbHeight*0.86 as the split (matching the vanilla cap on baseLine) so the
+				// top probe starts above the top of a standard 1-block obstacle.  The 0.5×
+				// split was too low: a 1-block obstacle extends past 0.9, putting its upper
+				// portion inside the top probe and blocking the vault.
+				double sableBase = entity.getBbHeight() * 0.86;
+				AABB sableBoxBottom = new AABB(pos.x() - d, pos.y(),                    pos.z() - d, pos.x() + d, pos.y() + sableBase,                     pos.z() + d);
+				AABB sableBoxTop    = new AABB(pos.x() - d, pos.y() + sableBase + 0.01, pos.z() - d, pos.x() + d, pos.y() + sableBase + entity.getBbHeight(), pos.z() + d);
+				double sableProbe = distance * 1.5;
+				Vec3 sableResult = Vec3.ZERO;
+				for (Vec3 dir : new Vec3[]{lx, lx.reverse(), lz, lz.reverse()}) {
+					Vec3 dirH = new Vec3(dir.x(), 0, dir.z());
+					if (dirH.lengthSqr() < 1e-6) continue;
+					dirH = dirH.normalize();
+					if (SableCompat.hasSubLevelCollision(world, expandInDirection(sableBoxBottom, dirH, sableProbe))
+							&& !SableCompat.hasSubLevelCollision(world, expandInDirection(sableBoxTop, dirH, distance + 1.8))) {
+						sableResult = sableResult.add(dirH);
+					}
+				}
+				// When the Sable path finds a vault direction use it; otherwise fall through
+				// to the vanilla path (which also calls isBlocked and handles sublevel blocks).
+				if (sableResult.length() > 0.001) return sableResult.normalize();
+			}
+		}
+
+		if (isBlocked(world, entity, baseBoxBottom.expandTowards(distance, 0, 0)) && !isBlocked(world, entity, baseBoxTop.expandTowards((distance + 1.8), 0, 0))) {
 			stepX++;
 		}
-		if (!world.noCollision(entity, baseBoxBottom.expandTowards(-distance, 0, 0)) && world.noCollision(entity, baseBoxTop.expandTowards(-(distance + 1.8), 0, 0))) {
+		if (isBlocked(world, entity, baseBoxBottom.expandTowards(-distance, 0, 0)) && !isBlocked(world, entity, baseBoxTop.expandTowards(-(distance + 1.8), 0, 0))) {
 			stepX--;
 		}
-		if (!world.noCollision(entity, baseBoxBottom.expandTowards(0, 0, distance)) && world.noCollision(entity, baseBoxTop.expandTowards(0, 0, (distance + 1.8)))) {
+		if (isBlocked(world, entity, baseBoxBottom.expandTowards(0, 0, distance)) && !isBlocked(world, entity, baseBoxTop.expandTowards(0, 0, (distance + 1.8)))) {
 			stepZ++;
 		}
-		if (!world.noCollision(entity, baseBoxBottom.expandTowards(0, 0, -distance)) && world.noCollision(entity, baseBoxTop.expandTowards(0, 0, -(distance + 1.8)))) {
+		if (isBlocked(world, entity, baseBoxBottom.expandTowards(0, 0, -distance)) && !isBlocked(world, entity, baseBoxTop.expandTowards(0, 0, -(distance + 1.8)))) {
 			stepZ--;
 		}
 		if (stepX == 0 && stepZ == 0) return null;
@@ -163,7 +293,7 @@ public class WorldUtil {
 			Vec3 blockPosition = entity.position().add(result).add(0, 0.5, 0);
 			BlockPos target = new BlockPos(Mth.floor(blockPosition.x()), Mth.floor(blockPosition.y()), Mth.floor(blockPosition.z()));
 			if (!world.isLoaded(target)) return null;
-			BlockState state = world.getBlockState(target);
+			BlockState state = getBlockStateAt(world, target);
 			if (state.getBlock() instanceof StairBlock) {
 				Half half = state.getValue(StairBlock.HALF);
 				if (half != Half.BOTTOM) return result;
@@ -179,21 +309,20 @@ public class WorldUtil {
 	}
 
 	public static double getWallHeight(LivingEntity entity, Vec3 direction, double maxHeight, double accuracy) {
-        final double d = entity.getBbWidth() * 0.49;
 		direction = direction.normalize();
         Level world = entity.level();
 		Vec3 pos = entity.position();
+		double d = entity.getBbWidth() * 0.49;
 		boolean canReturn = false;
 		for (double height = 0; height < maxHeight; height += accuracy) {
-			AABB box = new AABB(
-                    pos.x() + d + (direction.x() > 0 ? 1 : 0),
-                    pos.y() + height,
-                    pos.z() + d + (direction.z() > 0 ? 1 : 0),
-                    pos.x() - d + (direction.x() < 0 ? -1 : 0),
-                    pos.y() + height + accuracy,
-                    pos.z() - d + (direction.z() < 0 ? -1 : 0)
-			);
-            if (!world.noCollision(entity, box)) {
+			// Build a thin horizontal slice at this height, then expand toward the wall.
+			// Expand by a small epsilon in Y so that sub-level blocks whose top/bottom face
+			// lands exactly on a slice boundary (due to transformAABBToLocal float drift)
+			// are still found rather than falling between adjacent slices.
+			AABB slice = new AABB(pos.x() - d, pos.y() + height - 0.01, pos.z() - d,
+					pos.x() + d, pos.y() + height + accuracy + 0.01, pos.z() + d);
+			AABB box = expandInDirection(slice, direction, entity.getBbWidth() * 0.65 + 0.5);
+            if (isBlocked(world, entity, box)) {
 				canReturn = true;
 			} else {
 				if (canReturn) {
@@ -207,29 +336,7 @@ public class WorldUtil {
 	public static double getWallHeight(LivingEntity entity) {
 		Vec3 wall = getWall(entity);
 		if (wall == null) return 0;
-        Level world = entity.level();
-		final double accuracy = entity.getBbHeight() / 18; // normally about 0.1
-		final double d = entity.getBbWidth() * 0.5;
-		int loopNum = (int) Math.round(entity.getBbHeight() / accuracy);
-		Vec3 pos = entity.position();
-		boolean canReturn = false;
-		for (int i = 0; i < loopNum; i++) {
-			AABB box = new AABB(
-                    pos.x() + d + (wall.x() > 0 ? 1 : 0),
-                    pos.y() + accuracy * i,
-                    pos.z() + d + (wall.z() > 0 ? 1 : 0),
-                    pos.x() - d + (wall.x() < 0 ? -1 : 0),
-                    pos.y() + accuracy * (i + 1),
-                    pos.z() - d + (wall.z() < 0 ? -1 : 0)
-			);
-
-            if (!world.noCollision(entity, box)) {
-				canReturn = true;
-			} else {
-				if (canReturn) return accuracy * i;
-			}
-		}
-		return entity.getBbHeight();
+		return getWallHeight(entity, wall, entity.getBbHeight(), entity.getBbHeight() / 18.0);
 	}
 
 	@Nullable
@@ -244,18 +351,19 @@ public class WorldUtil {
 				entity.getY() + entity.getBbHeight() + bbHeight,
 				entity.getZ() + bbWidth
 		);
-		if (entity.getCommandSenderWorld().noCollision(entity, bb)) return null;
+		Level hangWorld = entity.getCommandSenderWorld();
+		if (!isBlocked(hangWorld, entity, bb)) return null;
 		BlockPos pos = new BlockPos(
 				Mth.floor(entity.getX()),
 				Mth.floor(entity.getY() + entity.getBbHeight() + 0.4),
 				Mth.floor(entity.getZ())
 		);
-		if (!entity.getCommandSenderWorld().isLoaded(pos)) return null;
-		BlockState state = entity.getCommandSenderWorld().getBlockState(pos);
+		if (!hangWorld.isLoaded(pos)) return null;
+		BlockState state = getBlockStateAt(hangWorld, pos);
 		Block block = state.getBlock();
 		HangDown.BarAxis axis = null;
 		if (block instanceof RotatedPillarBlock) {
-			if (state.isCollisionShapeFullBlock(entity.getCommandSenderWorld(), pos)) {
+			if (state.isCollisionShapeFullBlock(hangWorld, pos)) {
 				return null;
 			}
 			Direction.Axis pillarAxis = state.getValue(RotatedPillarBlock.AXIS);
@@ -268,7 +376,7 @@ public class WorldUtil {
 					break;
 			}
 		} else if (block instanceof EndRodBlock) {
-			if (state.isCollisionShapeFullBlock(entity.level(), pos)) {
+			if (state.isCollisionShapeFullBlock(hangWorld, pos)) {
 				return null;
 			}
 			Direction direction = state.getValue(DirectionalBlock.FACING);
@@ -322,7 +430,7 @@ public class WorldUtil {
                 center.y() + height,
                 center.z() + width
         );
-        return world.noCollision(boundingBox);
+        return !isBlocked(world, boundingBox);
     }
 	public static boolean existsDivableSpace(LivingEntity entity) {
 		Level world = entity.getCommandSenderWorld();
@@ -346,7 +454,7 @@ public class WorldUtil {
 					centerPoint.y() + height,
 					centerPoint.z() + width
 			);
-			if (!world.noCollision(entity, box)) return false;
+			if (isBlocked(world, entity, box)) return false;
 		}
 		center = center.add(diveDirection.scale(4));
 		AABB verticalWideBox = new AABB(
@@ -357,7 +465,7 @@ public class WorldUtil {
 				center.y() + height,
 				center.z() + wideWidth
 		);
-        if (world.noCollision(verticalWideBox)) return true;
+        if (!isBlocked(world, verticalWideBox)) return true;
         BlockPos centerBlockPos = new BlockPos(
 				Mth.floor(center.x()),
 				Mth.floor(center.y() - 0.5),
@@ -394,7 +502,7 @@ public class WorldUtil {
                 break;
             }
         }
-        return filledWithWater && world.noCollision(verticalWideBox);
+        return filledWithWater && !isBlocked(world, verticalWideBox);
 	}
 
 	@Nullable
@@ -429,6 +537,56 @@ public class WorldUtil {
 				pos.y() + entity.getBbHeight(),
 				pos.z() + d
 		);
+
+		// Probe in the sub-level's local coordinate system: treat the player as upright in
+		// local (local-Y is up) and build arm-reach + head boxes around their local position.
+		// Queries go directly to the sub-level's Level via hasLocalCollision — no world→local
+		// AABB bound enlargement from rotation, so "every block is a cliff" false positives
+		// and close-range rotated-sub-level failures are both resolved.  Cliff semantics
+		// (side blocked && top clear) are interpreted in the sub-level's frame: a cliff is
+		// a lip in the sub-level's geometry, regardless of world orientation.
+		if (SableCompat.isLoaded()) {
+			SubLevelHandle handle = SableCompat.firstSubLevelInRange(world, entity.getBoundingBox().inflate(distance + 1.0));
+			if (handle != null) {
+				Vec3 pLocal = SableCompat.worldToLocal(handle, entity.position());
+				double h = entity.getBbHeight();
+				AABB localSide = new AABB(pLocal.x-d, pLocal.y+baseLine-h/6, pLocal.z-d, pLocal.x+d, pLocal.y+baseLine, pLocal.z+d);
+				AABB localTop  = new AABB(pLocal.x-d, pLocal.y+baseLine,     pLocal.z-d, pLocal.x+d, pLocal.y+h,        pLocal.z+d);
+				// Top-clear probe must reach at least as far as the side probe.  With an
+				// asymmetric range (side reaches sideProbe=0.45, top reaches distance=0.3),
+				// a player at gap 0.30-0.45 from a tall wall gets side hit (reaches wall) +
+				// top clear (falls short of wall) → spurious cliff for every block in the band.
+				double sideProbe = distance * 1.5;
+				int xDir = 0, zDir = 0;
+				for (int[] p : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
+					AABB sideExp = localSide.expandTowards(p[0]*sideProbe, 0, p[1]*sideProbe);
+					AABB topExp  = localTop.expandTowards(p[0]*sideProbe, 0, p[1]*sideProbe);
+					if (SableCompat.hasLocalCollision(handle, sideExp)
+							&& !SableCompat.hasLocalCollision(handle, topExp)) {
+						xDir += p[0]; zDir += p[1];
+					}
+				}
+				if (xDir != 0 || zDir != 0) {
+					Vec3 worldDir = SableCompat.localDirectionToWorld(handle, new Vec3(xDir, 0, zDir));
+					Vec3 horiz = new Vec3(worldDir.x(), 0, worldDir.z());
+					// Walls whose world direction is purely world-vertical can't round-trip
+					// through the downstream 2-double clingWallDirection storage — skip.
+					if (horiz.lengthSqr() >= 1e-4) {
+						Vec3 result = horiz.normalize().scale(Math.sqrt(xDir*xDir + zDir*zDir));
+						Vec3 wallStep = result.normalize();
+						BlockPos wallPos = new BlockPos(
+								Mth.floor(pos.x() + wallStep.x() * (d + 0.1)),
+								Mth.floor(entity.getBoundingBox().minY + baseLine - 0.3),
+								Mth.floor(pos.z() + wallStep.z() * (d + 0.1))
+						);
+						float slip = getBlockStateAt(world, wallPos).getFriction(world, wallPos, entity);
+						return slip <= 0.9 ? result : null;
+					}
+				}
+			}
+		}
+
+		// Vanilla world-axis detection.
 		int xDirection = 0;
 		int zDirection = 0;
 
@@ -455,11 +613,11 @@ public class WorldUtil {
 					Mth.floor(entity.getBoundingBox().minY + baseLine - 0.3),
 					Mth.floor(entity.getZ() + zDirection)
 			);
-			if (!entity.getCommandSenderWorld().isLoaded(blockPos1)) return null;
-			if (!entity.getCommandSenderWorld().isLoaded(blockPos2)) return null;
+			if (!world.isLoaded(blockPos1)) return null;
+			if (!world.isLoaded(blockPos2)) return null;
 			slipperiness = Math.min(
-					entity.getCommandSenderWorld().getBlockState(blockPos1).getFriction(entity.getCommandSenderWorld(), blockPos1, entity),
-					entity.getCommandSenderWorld().getBlockState(blockPos2).getFriction(entity.getCommandSenderWorld(), blockPos2, entity)
+					getBlockStateAt(world, blockPos1).getFriction(world, blockPos1, entity),
+					getBlockStateAt(world, blockPos2).getFriction(world, blockPos2, entity)
 			);
 		} else {
 			double blockX = entity.getX() + xDirection, blockZ = entity.getZ() + zDirection;
@@ -468,8 +626,8 @@ public class WorldUtil {
                     Mth.floor(entity.getBoundingBox().minY + baseLine - 0.3),
                     Mth.floor(blockZ)
 			);
-			if (!entity.level().isLoaded(blockPos)) return null;
-			if (entity.level().getBlockState(blockPos).is(Blocks.AIR)) {
+			if (!world.isLoaded(blockPos)) return null;
+			if (getBlockStateAt(world, blockPos).isAir()) {
 				if (xDirection != 0) {
 					blockZ = blockZ + Math.signum((blockZ - Math.floor(blockZ)) - 0.5);
 				} else {
@@ -481,7 +639,7 @@ public class WorldUtil {
                         Mth.floor(blockZ)
 				);
 			}
-			slipperiness = entity.level().getBlockState(blockPos).getFriction(entity.level(), blockPos, entity);
+			slipperiness = getBlockStateAt(world, blockPos).getFriction(world, blockPos, entity);
 		}
 		return slipperiness <= 0.9 ? new Vec3(xDirection, 0, zDirection) : null;
 	}

@@ -1,6 +1,7 @@
 package com.alrex.parcool.common.action.impl;
 
 import com.alrex.parcool.api.SoundEvents;
+import com.alrex.parcool.compat.SableCompat;
 import com.alrex.parcool.client.animation.impl.HangAnimator;
 import com.alrex.parcool.client.input.KeyBindings;
 import com.alrex.parcool.common.action.Action;
@@ -113,24 +114,25 @@ public class HangDown extends Action {
 		Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot);
 		final double speed = 0.1;
 		double xSpeed = 0, zSpeed = 0;
+		Vec3 subVel = SableCompat.getSubLevelDisplacementAt(player.level(), player.getBoundingBox().inflate(0.5), player.position());
 		if (orthogonalToBar) {
 			if (hangingBarAxis == BarAxis.X) {
 				xSpeed = (bodyVec.z > 0 ? 1 : -1) * speed;
 			} else {
 				zSpeed = (bodyVec.x > 0 ? 1 : -1) * speed;
 			}
-            if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(xSpeed, 0, -zSpeed);
-            else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(-xSpeed, 0, zSpeed);
-			else player.setDeltaMovement(0, 0, 0);
+            if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(xSpeed + subVel.x(), subVel.y(), -zSpeed + subVel.z());
+            else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(-xSpeed + subVel.x(), subVel.y(), zSpeed + subVel.z());
+			else player.setDeltaMovement(subVel);
 		} else {
 			if (hangingBarAxis == BarAxis.X) {
 				xSpeed = (bodyVec.x > 0 ? 1 : -1) * speed;
 			} else {
 				zSpeed = (bodyVec.z > 0 ? 1 : -1) * speed;
 			}
-            if (KeyBindings.isKeyForwardDown()) player.setDeltaMovement(xSpeed, 0, zSpeed);
-            else if (KeyBindings.isKeyBackDown()) player.setDeltaMovement(-xSpeed, 0, -zSpeed);
-			else player.setDeltaMovement(0, 0, 0);
+            if (KeyBindings.isKeyForwardDown()) player.setDeltaMovement(xSpeed + subVel.x(), subVel.y(), zSpeed + subVel.z());
+            else if (KeyBindings.isKeyBackDown()) player.setDeltaMovement(-xSpeed + subVel.x(), subVel.y(), -zSpeed + subVel.z());
+			else player.setDeltaMovement(subVel);
 		}
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
 	}

@@ -1,6 +1,7 @@
 package com.alrex.parcool.common.action.impl;
 
 import com.alrex.parcool.api.SoundEvents;
+import com.alrex.parcool.compat.SableCompat;
 import com.alrex.parcool.client.animation.impl.VerticalWallRunAnimator;
 import com.alrex.parcool.client.input.KeyBindings;
 import com.alrex.parcool.common.action.Action;
@@ -54,7 +55,7 @@ public class VerticalWallRun extends Action {
 				&& parkourability.getAdditionalProperties().getLastSprintingTick() > 12
 				&& lookVec.y() > 0;
 		if (able) {
-			Vec3 wall = WorldUtil.getWall(player);
+			Vec3 wall = WorldUtil.getWall(player, player.getBbWidth() * 0.65);
 			if (wall == null) return false;
 			wall = wall.normalize();
 			if (wall.dot(VectorUtil.fromYawDegree(player.getYHeadRot())) > 0.93) {
@@ -62,7 +63,7 @@ public class VerticalWallRun extends Action {
                 if (height > player.getBbHeight() * 1.3) {
 					BlockPos targetBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wall, 0.5);
 					if (!player.getCommandSenderWorld().isLoaded(targetBlock)) return false;
-					float slipperiness = player.getCommandSenderWorld().getBlockState(targetBlock).getFriction(player.getCommandSenderWorld(), targetBlock, player);
+					float slipperiness = WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), targetBlock).getFriction(player.getCommandSenderWorld(), targetBlock, player);
 					startInfo.putDouble(height);
 					startInfo.putFloat(slipperiness);
 					startInfo.putDouble(wall.x());
@@ -77,7 +78,7 @@ public class VerticalWallRun extends Action {
 
 	@Override
     public boolean canContinue(Player player, Parkourability parkourability) {
-		Vec3 wall = WorldUtil.getWall(player);
+		Vec3 wall = WorldUtil.getWall(player, player.getBbWidth() * 0.75);
 		if (wall == null) return false;
 		wall = wall.normalize();
 		return (wall.dot(VectorUtil.fromYawDegree(player.getYHeadRot())) > 0.93
@@ -118,6 +119,15 @@ public class VerticalWallRun extends Action {
             player.yBodyRotO = player.yBodyRot = player.getYHeadRot();
 		}
 	}
+
+    @OnlyIn(Dist.CLIENT)
+    @Override
+    public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
+        Vec3 pos = player.position();
+        Vec3 tracked = SableCompat.getSubLevelTrackedPosition(
+                player.level(), player.getBoundingBox().inflate(player.getBbWidth() * 0.65 + 0.5), pos);
+        if (tracked != pos) player.setPos(tracked.x(), tracked.y(), tracked.z());
+    }
 
     @Override
     public void onWorkingTickInClient(Player player, Parkourability parkourability) {

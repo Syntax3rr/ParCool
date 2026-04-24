@@ -1,6 +1,7 @@
 package com.alrex.parcool.common.action.impl;
 
 import com.alrex.parcool.client.animation.impl.WallSlideAnimator;
+import com.alrex.parcool.compat.SableCompat;
 import com.alrex.parcool.client.input.KeyBindings;
 import com.alrex.parcool.common.action.Action;
 import com.alrex.parcool.common.action.StaminaConsumeTiming;
@@ -77,6 +78,15 @@ public class WallSlide extends Action {
 
 	@OnlyIn(Dist.CLIENT)
 	@Override
+    public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
+        Vec3 pos = player.position();
+        Vec3 tracked = SableCompat.getSubLevelTrackedPosition(
+                player.level(), player.getBoundingBox().inflate(player.getBbWidth() * 0.65 + 0.5), pos);
+        if (tracked != pos) player.setPos(tracked.x(), tracked.y(), tracked.z());
+    }
+
+	@OnlyIn(Dist.CLIENT)
+	@Override
     public void onWorkingTickInClient(Player player, Parkourability parkourability) {
 		Animation animation = Animation.get(player);
 		if (animation != null && !animation.hasAnimator()) {
@@ -100,7 +110,7 @@ public class WallSlide extends Action {
 		if (leanedWallDirection != null) {
 			BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, leanedWallDirection, 0.75);
 			if (!player.getCommandSenderWorld().isLoaded(leanedBlock)) return;
-			float slipperiness = player.getCommandSenderWorld().getBlockState(leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player);
+			float slipperiness = WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player);
 			slipperiness = (float) Math.sqrt(slipperiness);
 			player.fallDistance *= slipperiness;
 			player.setDeltaMovement(player.getDeltaMovement().multiply(0.8, slipperiness, 0.8));

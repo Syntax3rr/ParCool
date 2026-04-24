@@ -123,10 +123,7 @@ public class VerticalWallRun extends Action {
     @OnlyIn(Dist.CLIENT)
     @Override
     public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
-        Vec3 pos = player.position();
-        Vec3 tracked = SableCompat.getSubLevelTrackedPosition(
-                player.level(), player.getBoundingBox().inflate(player.getBbWidth() * 0.65 + 0.5), pos);
-        if (tracked != pos) player.setPos(tracked.x(), tracked.y(), tracked.z());
+        SableCompat.applySubLevelTracking(player, player.getBbWidth() * 0.65 + 0.5);
     }
 
     @Override

@@ -25,6 +25,33 @@ import java.util.List;
 
 public class WorldUtil {
 
+	private static final int[][] CARDINAL_DIRS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+
+	// Shared sable-branch core for wall detection: probe in ±local-X and ±local-Z
+	// against handle-specific boxes, accumulate the matching directions, return the
+	// world-XZ wall direction (scaled by the number of matching probes, matching the
+	// vanilla (wallX, wallZ) integer-sum convention).  Null when no probe matched or
+	// the resulting world direction is essentially vertical (un-storable in 2-double
+	// wall-direction fields).  topMustBeBlocked=true for wall-spanning detectors
+	// (getRunnableWall, getWall); false for cliff detection (getGrabbableWall).
+	@Nullable
+	private static Vec3 probeSableDirections(
+			SubLevelHandle handle, AABB localBot, AABB localTop, double probe, boolean topMustBeBlocked) {
+		int xDir = 0, zDir = 0;
+		for (int[] p : CARDINAL_DIRS) {
+			boolean side = SableCompat.hasLocalCollision(handle, localBot.expandTowards(p[0]*probe, 0, p[1]*probe));
+			boolean top  = SableCompat.hasLocalCollision(handle, localTop.expandTowards(p[0]*probe, 0, p[1]*probe));
+			if (side && (top == topMustBeBlocked)) {
+				xDir += p[0]; zDir += p[1];
+			}
+		}
+		if (xDir == 0 && zDir == 0) return null;
+		Vec3 worldDir = SableCompat.localDirectionToWorld(handle, new Vec3(xDir, 0, zDir));
+		Vec3 horiz = new Vec3(worldDir.x(), 0, worldDir.z());
+		if (horiz.lengthSqr() < 1e-4) return null;
+		return horiz.normalize().scale(Math.sqrt(xDir*xDir + zDir*zDir));
+	}
+
 	// Returns true when an AABB is physically blocked — either by vanilla world geometry
 	// or by a sable sub-level block at an arbitrary orientation.
 	private static boolean isBlocked(Level level, AABB aabb) {
@@ -72,40 +99,18 @@ public class WorldUtil {
 	public static Vec3 getRunnableWall(LivingEntity entity, double range) {
 		Level level = entity.level();
 
-		// Probe in the sub-level's local coordinate system: treat the player as upright in
-		// local (local-Y is up), build hitbox-sized boxes around their local position, and
-		// query the sub-level's own Level directly with hasLocalCollision.  This avoids the
-		// axis-aligned bound-enlargement that transformAABBToLocal introduces for rotated
-		// sub-levels and makes probe geometry match what the player would actually reach
-		// when standing on that sub-level (relevant for side-flipped sub-levels where the
-		// local floor is a world-vertical wall).
+		// Probe boxes built in the sub-level's local frame so rotation doesn't enlarge the
+		// query volume (which transformAABBToLocal would, bounding 8 rotated corners).
 		if (SableCompat.isLoaded()) {
 			SubLevelHandle handle = SableCompat.firstSubLevelInRange(level, entity.getBoundingBox().inflate(range + 0.5));
 			if (handle != null) {
 				Vec3 pLocal = SableCompat.worldToLocal(handle, entity.position());
 				double w = entity.getBbWidth() * 0.4;
 				double h = entity.getBbHeight();
-				AABB localBot = new AABB(pLocal.x-w, pLocal.y,          pLocal.z-w, pLocal.x+w, pLocal.y+h*0.30, pLocal.z+w);
-				AABB localTop = new AABB(pLocal.x-w, pLocal.y+h*0.85,   pLocal.z-w, pLocal.x+w, pLocal.y+h,      pLocal.z+w);
-				double probe = range + 0.15;
-				int xDir = 0, zDir = 0;
-				for (int[] p : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
-					AABB sideExp = localBot.expandTowards(p[0]*probe, 0, p[1]*probe);
-					AABB topExp  = localTop.expandTowards(p[0]*probe, 0, p[1]*probe);
-					if (SableCompat.hasLocalCollision(handle, sideExp)
-							&& SableCompat.hasLocalCollision(handle, topExp)) {
-						xDir += p[0]; zDir += p[1];
-					}
-				}
-				if (xDir != 0 || zDir != 0) {
-					Vec3 worldDir = SableCompat.localDirectionToWorld(handle, new Vec3(xDir, 0, zDir));
-					Vec3 horiz = new Vec3(worldDir.x(), 0, worldDir.z());
-					// Walls whose world direction is purely world-vertical can't round-trip
-					// through the downstream 2-double storage — skip gracefully.
-					if (horiz.lengthSqr() >= 1e-4) {
-						return horiz.normalize().scale(Math.sqrt(xDir*xDir + zDir*zDir));
-					}
-				}
+				AABB localBot = new AABB(pLocal.x-w, pLocal.y,        pLocal.z-w, pLocal.x+w, pLocal.y+h*0.30, pLocal.z+w);
+				AABB localTop = new AABB(pLocal.x-w, pLocal.y+h*0.85, pLocal.z-w, pLocal.x+w, pLocal.y+h,      pLocal.z+w);
+				Vec3 sableWall = probeSableDirections(handle, localBot, localTop, range + 0.15, true);
+				if (sableWall != null) return sableWall;
 			}
 		}
 
@@ -152,8 +157,6 @@ public class WorldUtil {
 	public static Vec3 getWall(LivingEntity entity, double range) {
 		Level levelW = entity.level();
 
-		// Same local-frame pattern as getRunnableWall: probe boxes built in the sub-level's
-		// local coordinates so rotation doesn't enlarge the query volume.
 		if (SableCompat.isLoaded()) {
 			SubLevelHandle handle = SableCompat.firstSubLevelInRange(levelW, entity.getBoundingBox().inflate(range + 0.5));
 			if (handle != null) {
@@ -161,25 +164,10 @@ public class WorldUtil {
 				double wL = entity.getBbWidth() * 0.49;
 				double h = entity.getBbHeight();
 				double halfH = h / 2.0;
-				AABB localBot = new AABB(pLocal.x-wL, pLocal.y,         pLocal.z-wL, pLocal.x+wL, pLocal.y+halfH, pLocal.z+wL);
-				AABB localTop = new AABB(pLocal.x-wL, pLocal.y+halfH,   pLocal.z-wL, pLocal.x+wL, pLocal.y+h,     pLocal.z+wL);
-				double probe = range + 0.15;
-				int xDir = 0, zDir = 0;
-				for (int[] p : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
-					AABB sideExp = localBot.expandTowards(p[0]*probe, 0, p[1]*probe);
-					AABB topExp  = localTop.expandTowards(p[0]*probe, 0, p[1]*probe);
-					if (SableCompat.hasLocalCollision(handle, sideExp)
-							&& SableCompat.hasLocalCollision(handle, topExp)) {
-						xDir += p[0]; zDir += p[1];
-					}
-				}
-				if (xDir != 0 || zDir != 0) {
-					Vec3 worldDir = SableCompat.localDirectionToWorld(handle, new Vec3(xDir, 0, zDir));
-					Vec3 horiz = new Vec3(worldDir.x(), 0, worldDir.z());
-					if (horiz.lengthSqr() >= 1e-4) {
-						return horiz.normalize().scale(Math.sqrt(xDir*xDir + zDir*zDir));
-					}
-				}
+				AABB localBot = new AABB(pLocal.x-wL, pLocal.y,       pLocal.z-wL, pLocal.x+wL, pLocal.y+halfH, pLocal.z+wL);
+				AABB localTop = new AABB(pLocal.x-wL, pLocal.y+halfH, pLocal.z-wL, pLocal.x+wL, pLocal.y+h,     pLocal.z+wL);
+				Vec3 sableWall = probeSableDirections(handle, localBot, localTop, range + 0.15, true);
+				if (sableWall != null) return sableWall;
 			}
 		}
 
@@ -538,13 +526,6 @@ public class WorldUtil {
 				pos.z() + d
 		);
 
-		// Probe in the sub-level's local coordinate system: treat the player as upright in
-		// local (local-Y is up) and build arm-reach + head boxes around their local position.
-		// Queries go directly to the sub-level's Level via hasLocalCollision — no world→local
-		// AABB bound enlargement from rotation, so "every block is a cliff" false positives
-		// and close-range rotated-sub-level failures are both resolved.  Cliff semantics
-		// (side blocked && top clear) are interpreted in the sub-level's frame: a cliff is
-		// a lip in the sub-level's geometry, regardless of world orientation.
 		if (SableCompat.isLoaded()) {
 			SubLevelHandle handle = SableCompat.firstSubLevelInRange(world, entity.getBoundingBox().inflate(distance + 1.0));
 			if (handle != null) {
@@ -552,36 +533,19 @@ public class WorldUtil {
 				double h = entity.getBbHeight();
 				AABB localSide = new AABB(pLocal.x-d, pLocal.y+baseLine-h/6, pLocal.z-d, pLocal.x+d, pLocal.y+baseLine, pLocal.z+d);
 				AABB localTop  = new AABB(pLocal.x-d, pLocal.y+baseLine,     pLocal.z-d, pLocal.x+d, pLocal.y+h,        pLocal.z+d);
-				// Top-clear probe must reach at least as far as the side probe.  With an
-				// asymmetric range (side reaches sideProbe=0.45, top reaches distance=0.3),
-				// a player at gap 0.30-0.45 from a tall wall gets side hit (reaches wall) +
-				// top clear (falls short of wall) → spurious cliff for every block in the band.
-				double sideProbe = distance * 1.5;
-				int xDir = 0, zDir = 0;
-				for (int[] p : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
-					AABB sideExp = localSide.expandTowards(p[0]*sideProbe, 0, p[1]*sideProbe);
-					AABB topExp  = localTop.expandTowards(p[0]*sideProbe, 0, p[1]*sideProbe);
-					if (SableCompat.hasLocalCollision(handle, sideExp)
-							&& !SableCompat.hasLocalCollision(handle, topExp)) {
-						xDir += p[0]; zDir += p[1];
-					}
-				}
-				if (xDir != 0 || zDir != 0) {
-					Vec3 worldDir = SableCompat.localDirectionToWorld(handle, new Vec3(xDir, 0, zDir));
-					Vec3 horiz = new Vec3(worldDir.x(), 0, worldDir.z());
-					// Walls whose world direction is purely world-vertical can't round-trip
-					// through the downstream 2-double clingWallDirection storage — skip.
-					if (horiz.lengthSqr() >= 1e-4) {
-						Vec3 result = horiz.normalize().scale(Math.sqrt(xDir*xDir + zDir*zDir));
-						Vec3 wallStep = result.normalize();
-						BlockPos wallPos = new BlockPos(
-								Mth.floor(pos.x() + wallStep.x() * (d + 0.1)),
-								Mth.floor(entity.getBoundingBox().minY + baseLine - 0.3),
-								Mth.floor(pos.z() + wallStep.z() * (d + 0.1))
-						);
-						float slip = getBlockStateAt(world, wallPos).getFriction(world, wallPos, entity);
-						return slip <= 0.9 ? result : null;
-					}
+				// Top and side probes share one range: if the side reaches a wall, the top
+				// must also reach its would-be upper block, else any tall wall in the band
+				// between the two ranges looks like a false cliff.
+				Vec3 sableWall = probeSableDirections(handle, localSide, localTop, distance * 1.5, false);
+				if (sableWall != null) {
+					Vec3 wallStep = sableWall.normalize();
+					BlockPos wallPos = new BlockPos(
+							Mth.floor(pos.x() + wallStep.x() * (d + 0.1)),
+							Mth.floor(entity.getBoundingBox().minY + baseLine - 0.3),
+							Mth.floor(pos.z() + wallStep.z() * (d + 0.1))
+					);
+					float slip = getBlockStateAt(world, wallPos).getFriction(world, wallPos, entity);
+					return slip <= 0.9 ? sableWall : null;
 				}
 			}
 		}

@@ -127,16 +127,10 @@ public class ClingToCliff extends Action {
 			player.setDeltaMovement(baseDelta);
 		} else {
 			if (clingWallDirection != null && facingDirection == FacingDirection.ToWall) {
-				// Edge traversal = cross(up, wallNormal).  For a vanilla or Y-rotated sub-level
-				// this equals yRot(PI/2) on the wall normal (purely horizontal).  For a pitched
-				// sub-level the result gains a Y component so movement follows the tilted edge.
-				Vec3 wn = clingWallDirection.normalize();
-				Vec3 up = frame.localY();
-				Vec3 traversal = new Vec3(
-						up.y() * wn.z() - up.z() * wn.y(),
-						up.z() * wn.x() - up.x() * wn.z(),
-						up.x() * wn.y() - up.y() * wn.x()
-				).normalize();
+				// Edge traversal = up × wallNormal.  For vanilla/Y-rotated this reduces to
+				// yRot(π/2) on the wall normal; a pitched sub-level gains a Y component so
+				// movement follows the tilted edge.
+				Vec3 traversal = frame.localY().cross(clingWallDirection.normalize()).normalize();
 				Vec3 vec = traversal.scale(0.1);
                 if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(vec.add(baseDelta));
                 else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(vec.reverse().add(baseDelta));

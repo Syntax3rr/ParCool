@@ -96,11 +96,9 @@ public class HorizontalWallRun extends Action {
             if (attr != null) {
                 speedScale *= attr.getValue() / attr.getBaseValue();
             }
-            // Compose motion in the sub-level's local frame so vertical decay and sub-level
-            // displacement apply along localY (not world-Y), which only matches on flat or
-            // Y-rotated sub-levels.  Only the localY component of displacement is added —
-            // Sable floor tracking handles in-plane co-movement, so adding the full vector
-            // would double-count.
+            // Vertical decay applies along the sub-level's localY (gravity relative to the
+            // sub-level); in-plane displacement is handled by Sable's floor tracking, so we
+            // only add the localY component here to avoid double-counting.
             SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
             Vec3 runHoriz = frame.projectOntoFloor(new Vec3(runningDirection.x() * speedScale, 0, runningDirection.z() * speedScale));
             double decayedUp = frame.verticalComponent(movement) * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo());

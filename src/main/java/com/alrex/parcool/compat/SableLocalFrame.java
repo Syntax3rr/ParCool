@@ -34,14 +34,6 @@ public record SableLocalFrame(
         return worldVec.subtract(localY.scale(worldVec.dot(localY)));
     }
 
-    // Combines floor-plane motion from newFloorVec with the localY component of existingDelta.
-    // Replaces the common `.add(0, delta.y(), 0)` pattern, which hardcodes world-Y as gravity.
-    public Vec3 preserveVerticalMotion(Vec3 newFloorVec, Vec3 existingDelta) {
-        double existingUp = existingDelta.dot(localY);
-        Vec3 floor = newFloorVec.subtract(localY.scale(newFloorVec.dot(localY)));
-        return floor.add(localY.scale(existingUp));
-    }
-
     // Adds the sub-level's this-tick motion so the entity co-moves with a moving sub-level.
     public Vec3 applyDisplacement(Vec3 delta) {
         return delta.add(displacement);

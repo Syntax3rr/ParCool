@@ -51,12 +51,6 @@ public class Slide extends Action {
 
 	@Override
 	public boolean canStart(Player player, Parkourability parkourability, ByteBuffer startInfo) {
-		// Slide is bound to world gravity: the player is upright in world space, sliding on
-		// whatever surface is beneath them in world-Y terms.  Capture the look direction in
-		// world-XZ (strip world-Y).  On sub-levels this is still the right frame as long as
-		// the player is standing on a world-horizontal surface — which is the case whenever
-		// Minecraft's own gravity + collision holds them (including a side-flipped sub-level
-		// where the player stands on what is, from the sub-level's frame, a local wall).
 		Vec3 lookingVec = player.getLookAngle().multiply(1, 0, 1);
 		if (lookingVec.lengthSqr() < 1e-6) return false;
 		lookingVec = lookingVec.normalize();
@@ -112,11 +106,8 @@ public class Slide extends Action {
         AttributeInstance attr = player.getAttribute(Attributes.MOVEMENT_SPEED);
         double baseSpeed = attr != null ? attr.getValue() * 4.5 : 0.45;
 
-        // Slide dynamics are world-gravity native: the floor is whatever world-Y-horizontal
-        // surface the player is standing on, and their motion stays in world-XZ.  Sub-level
-        // orientation only matters for (1) slope, via getSubLevelSlopeInDirection which reads
-        // the sub-level's local-Y delta per world-horizontal step, and (2) co-movement with
-        // moving sub-levels, via the displacement Y component.
+        // Sub-level integration is narrow: slope + Y-displacement for moving sub-levels.
+        // Motion itself stays in world-XZ because the player is world-gravity-bound.
         SableLocalFrame frame = SableLocalFrame.at(player, 0.5);
         Vec3 effectiveSlideVec = slidingVec;
         double slope = frame.isSubLevel()
@@ -147,12 +138,10 @@ public class Slide extends Action {
         if (slideSpeed < STOP_SLIDE_SPEED) return;
 
         Vec3 vec = effectiveSlideVec.scale(baseSpeed * slideSpeed).scale(player.onGround() ? 1.0 : 0.6);
-        // Preserve world-Y (gravity) and add world-Y sub-level displacement for moving
-        // sub-levels.  Sable floor tracking handles in-plane co-movement, so adding
-        // horizontal displacement would double-count.
+        // Only Y-displacement is added — Sable floor tracking handles in-plane co-movement,
+        // so adding full displacement would double-count.
         Vec3 current = player.getDeltaMovement();
-        double subVelY = frame.displacement().y();
-        player.setDeltaMovement(vec.x(), current.y() + subVelY, vec.z());
+        player.setDeltaMovement(vec.x(), current.y() + frame.displacement().y(), vec.z());
 	}
 
     @Override

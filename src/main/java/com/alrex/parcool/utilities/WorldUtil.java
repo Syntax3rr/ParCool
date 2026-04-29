@@ -27,20 +27,13 @@ public class WorldUtil {
 
 	private static final int[][] CARDINAL_DIRS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 
-	// Shared sable-branch core for wall detection: probe in ±local-X and ±local-Z
-	// against handle-specific boxes, accumulate the matching directions, return the
-	// world-XZ wall direction (scaled by the number of matching probes, matching the
-	// vanilla (wallX, wallZ) integer-sum convention).  Null when no probe matched or
-	// the resulting world direction is essentially vertical (un-storable in 2-double
-	// wall-direction fields).  topMustBeBlocked=true for wall-spanning detectors
-	// (getRunnableWall, getWall); false for cliff detection (getGrabbableWall).
 	@Nullable
 	private static Vec3 probeSableDirections(
 			SubLevelHandle handle, AABB localBot, AABB localTop, double probe, boolean topMustBeBlocked) {
 		int xDir = 0, zDir = 0;
 		for (int[] p : CARDINAL_DIRS) {
-			boolean side = SableCompat.hasLocalCollision(handle, localBot.expandTowards(p[0]*probe, 0, p[1]*probe));
-			boolean top  = SableCompat.hasLocalCollision(handle, localTop.expandTowards(p[0]*probe, 0, p[1]*probe));
+			boolean side = SableCompat.hasLocalCollision(handle, sliceForDirection(localBot, p[0], p[1], probe));
+			boolean top  = SableCompat.hasLocalCollision(handle, sliceForDirection(localTop, p[0], p[1], probe));
 			if (side && (top == topMustBeBlocked)) {
 				xDir += p[0]; zDir += p[1];
 			}
@@ -48,12 +41,16 @@ public class WorldUtil {
 		if (xDir == 0 && zDir == 0) return null;
 		Vec3 worldDir = SableCompat.localDirectionToWorld(handle, new Vec3(xDir, 0, zDir));
 		Vec3 horiz = new Vec3(worldDir.x(), 0, worldDir.z());
-		if (horiz.lengthSqr() < 1e-4) return null;
-		return horiz.normalize().scale(Math.sqrt(xDir*xDir + zDir*zDir));
+		return horiz.lengthSqr() < 1e-4 ? null : horiz;
 	}
 
-	// Returns true when an AABB is physically blocked — either by vanilla world geometry
-	// or by a sable sub-level block at an arbitrary orientation.
+	private static AABB sliceForDirection(AABB box, int dx, int dz, double probe) {
+		if (dx > 0) return new AABB(box.maxX, box.minY, box.minZ, box.maxX + probe, box.maxY, box.maxZ);
+		if (dx < 0) return new AABB(box.minX - probe, box.minY, box.minZ, box.minX, box.maxY, box.maxZ);
+		if (dz > 0) return new AABB(box.minX, box.minY, box.maxZ, box.maxX, box.maxY, box.maxZ + probe);
+		return         new AABB(box.minX, box.minY, box.minZ - probe, box.maxX, box.maxY, box.minZ);
+	}
+
 	private static boolean isBlocked(Level level, AABB aabb) {
 		return !level.noCollision(aabb)
 			|| (SableCompat.isLoaded() && SableCompat.hasSubLevelCollision(level, aabb));
@@ -64,8 +61,6 @@ public class WorldUtil {
 			|| (SableCompat.isLoaded() && SableCompat.hasSubLevelCollision(level, aabb));
 	}
 
-	// Expands an AABB in an arbitrary (possibly non-axis-aligned) direction by distance.
-	// Equivalent to expandTowards but works for diagonal/3D directions.
 	private static AABB expandInDirection(AABB box, Vec3 dir, double distance) {
 		Vec3 d = dir.normalize().scale(distance);
 		return new AABB(
@@ -74,8 +69,8 @@ public class WorldUtil {
 		);
 	}
 
-	// Returns the BlockState at a world position, checking sable sub-levels when the
-	// vanilla block is air (sub-level blocks are not in the main world's chunk data).
+	// Falls back to a Sable sub-level lookup when the world block is air — sub-level
+	// blocks don't exist in the main world's chunk data.
 	public static BlockState getBlockStateAt(Level level, BlockPos pos) {
 		BlockState state = level.getBlockState(pos);
 		if (state.isAir() && SableCompat.isLoaded()) {
@@ -99,8 +94,6 @@ public class WorldUtil {
 	public static Vec3 getRunnableWall(LivingEntity entity, double range) {
 		Level level = entity.level();
 
-		// Probe boxes built in the sub-level's local frame so rotation doesn't enlarge the
-		// query volume (which transformAABBToLocal would, bounding 8 rotated corners).
 		if (SableCompat.isLoaded()) {
 			SubLevelHandle handle = SableCompat.firstSubLevelInRange(level, entity.getBoundingBox().inflate(range + 0.5));
 			if (handle != null) {
@@ -114,7 +107,6 @@ public class WorldUtil {
 			}
 		}
 
-		// Vanilla world-axis detection (vanilla blocks only — sable already handled above).
 		double width = entity.getBbWidth() * 0.4f;
 		double wallX = 0;
 		double wallZ = 0;
@@ -171,7 +163,6 @@ public class WorldUtil {
 			}
 		}
 
-		// Vanilla world-axis detection.
 		final double width = entity.getBbWidth() * 0.49;
 		double wallX = 0;
 		double wallZ = 0;
@@ -196,7 +187,6 @@ public class WorldUtil {
 		if (boxes.stream().allMatch(box -> isBlocked(levelW, box.expandTowards(0, 0, range))))  wallZ++;
 		if (boxes.stream().allMatch(box -> isBlocked(levelW, box.expandTowards(0, 0, -range)))) wallZ--;
 		if (wallX != 0 || wallZ != 0) return new Vec3(wallX, 0, wallZ);
-
 		return null;
 	}
 
@@ -226,8 +216,6 @@ public class WorldUtil {
 				pos.y() + baseLine + entity.getBbHeight(),
 				pos.z() + d
 		);
-		// Sable-first: probe in local axis directions so sloped sub-level walls don't fool
-		// world-axis probes into looking like vaultable steps.
 		if (SableCompat.isLoaded()) {
 			Vec3[] localAxes = SableCompat.getNearbySubLevelLocalXZAxes(world, entity.getBoundingBox().inflate(distance + 1.0));
 			Vec3 lx = localAxes[0], lz = localAxes[1];
@@ -239,10 +227,7 @@ public class WorldUtil {
 				}
 			}
 			if (sableNearby) {
-				// Use bbHeight*0.86 as the split (matching the vanilla cap on baseLine) so the
-				// top probe starts above the top of a standard 1-block obstacle.  The 0.5×
-				// split was too low: a 1-block obstacle extends past 0.9, putting its upper
-				// portion inside the top probe and blocking the vault.
+				// Match the vanilla baseLine cap so the top probe clears a 1-block obstacle.
 				double sableBase = entity.getBbHeight() * 0.86;
 				AABB sableBoxBottom = new AABB(pos.x() - d, pos.y(),                    pos.z() - d, pos.x() + d, pos.y() + sableBase,                     pos.z() + d);
 				AABB sableBoxTop    = new AABB(pos.x() - d, pos.y() + sableBase + 0.01, pos.z() - d, pos.x() + d, pos.y() + sableBase + entity.getBbHeight(), pos.z() + d);
@@ -257,8 +242,6 @@ public class WorldUtil {
 						sableResult = sableResult.add(dirH);
 					}
 				}
-				// When the Sable path finds a vault direction use it; otherwise fall through
-				// to the vanilla path (which also calls isBlocked and handles sublevel blocks).
 				if (sableResult.length() > 0.001) return sableResult.normalize();
 			}
 		}
@@ -303,10 +286,7 @@ public class WorldUtil {
 		double d = entity.getBbWidth() * 0.49;
 		boolean canReturn = false;
 		for (double height = 0; height < maxHeight; height += accuracy) {
-			// Build a thin horizontal slice at this height, then expand toward the wall.
-			// Expand by a small epsilon in Y so that sub-level blocks whose top/bottom face
-			// lands exactly on a slice boundary (due to transformAABBToLocal float drift)
-			// are still found rather than falling between adjacent slices.
+			// Y epsilon so sub-level blocks landing exactly on a slice boundary still match.
 			AABB slice = new AABB(pos.x() - d, pos.y() + height - 0.01, pos.z() - d,
 					pos.x() + d, pos.y() + height + accuracy + 0.01, pos.z() + d);
 			AABB box = expandInDirection(slice, direction, entity.getBbWidth() * 0.65 + 0.5);
@@ -533,9 +513,6 @@ public class WorldUtil {
 				double h = entity.getBbHeight();
 				AABB localSide = new AABB(pLocal.x-d, pLocal.y+baseLine-h/6, pLocal.z-d, pLocal.x+d, pLocal.y+baseLine, pLocal.z+d);
 				AABB localTop  = new AABB(pLocal.x-d, pLocal.y+baseLine,     pLocal.z-d, pLocal.x+d, pLocal.y+h,        pLocal.z+d);
-				// Top and side probes share one range: if the side reaches a wall, the top
-				// must also reach its would-be upper block, else any tall wall in the band
-				// between the two ranges looks like a false cliff.
 				Vec3 sableWall = probeSableDirections(handle, localSide, localTop, distance * 1.5, false);
 				if (sableWall != null) {
 					Vec3 wallStep = sableWall.normalize();
@@ -545,12 +522,12 @@ public class WorldUtil {
 							Mth.floor(pos.z() + wallStep.z() * (d + 0.1))
 					);
 					float slip = getBlockStateAt(world, wallPos).getFriction(world, wallPos, entity);
-					return slip <= 0.9 ? sableWall : null;
+					if (slip <= 0.9) return sableWall;
+					// fall through to vanilla detection in case a grabbable world wall coexists
 				}
 			}
 		}
 
-		// Vanilla world-axis detection.
 		int xDirection = 0;
 		int zDirection = 0;
 

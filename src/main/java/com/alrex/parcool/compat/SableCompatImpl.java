@@ -28,17 +28,13 @@ class SableCompatImpl {
         return ((SubLevelAccess) handle.sla).logicalPose().transformPositionInverse(worldPos);
     }
 
-    // Rotation-only transform: pose(dir) - pose(0) drops the translation component.
-    // Magnitude matches the input for an unscaled sub-level (the typical case); callers
-    // normalize if non-uniform scale is a concern.
+    // pose(dir) - pose(0) drops translation, leaving the rotation-only transform.
     static Vec3 localDirectionToWorld(SubLevelHandle handle, Vec3 localDir) {
         Pose3dc pose = ((SubLevelAccess) handle.sla).logicalPose();
         Vec3 origin = pose.transformPosition(Vec3.ZERO);
         return pose.transformPosition(localDir).subtract(origin);
     }
 
-    // Queries the sub-level's own Level directly — callers pass a local-space AABB, so
-    // there's no transformAABBToLocal enlargement from rotation.
     static boolean hasLocalCollision(SubLevelHandle handle, AABB localAABB) {
         if (handle.sla instanceof SubLevel subLevel) return !subLevel.getLevel().noCollision(localAABB);
         return false;
@@ -85,10 +81,6 @@ class SableCompatImpl {
         return new Vec3[]{new Vec3(1, 0, 0), new Vec3(0, 0, 1)};
     }
 
-    // Mirrors Sable's own floor-tracking formula so the result is physically bounded
-    // (zero for stationary sub-levels, never huge or NaN).  The local-space getVelocity
-    // overload can't be used here — it expects local-space pos and would explode when
-    // given world coordinates.
     static Vec3 getSubLevelDisplacementAt(Level level, AABB searchAABB, Vec3 pos) {
         BoundingBox3d box = new BoundingBox3d(searchAABB);
         for (SubLevelAccess sla : SableCompanion.INSTANCE.getAllIntersecting(level, box)) {
@@ -113,8 +105,7 @@ class SableCompatImpl {
         return pos;
     }
 
-    // Single-pass factory for SableLocalFrame: combines axes + displacement in one
-    // getAllIntersecting scan so callers don't pay for three separate lookups per tick.
+    // One scan to build axes + displacement, instead of three separate lookups per tick.
     @Nullable
     static SableLocalFrame buildFrameAt(Level level, AABB searchAABB, Vec3 pos) {
         BoundingBox3d box = new BoundingBox3d(searchAABB);
@@ -130,9 +121,8 @@ class SableCompatImpl {
         return null;
     }
 
-    // Numerical Jacobian of transformPositionInverse: world→local applies R^T, so
-    // differencing gives the rows of R^T; the j-th column of R (= local axis j in
-    // world space) is assembled from the j-th components of each finite-difference.
+    // Recover the columns of R (local axes in world space) by finite-differencing
+    // transformPositionInverse, which applies R'.
     private static Vec3[] computeLocalAxesInWorld(Pose3dc pose, Vec3 worldPos) {
         final double eps = 0.1;
         Vec3 base = pose.transformPositionInverse(worldPos);

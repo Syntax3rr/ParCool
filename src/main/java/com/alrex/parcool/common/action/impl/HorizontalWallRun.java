@@ -42,8 +42,7 @@ public class HorizontalWallRun extends Action {
         Integer value = info.getClientSetting().get(ParCoolConfig.Client.Integers.WallRunContinuableTick);
         if (value == null) value = ParCoolConfig.Client.Integers.WallRunContinuableTick.DefaultValue;
         int base = Math.min(value, info.getServerLimitation().get(ParCoolConfig.Server.Integers.MaxWallRunContinuableTick));
-        // Ascending wall: scale up max ticks proportional to upward slope component.
-        // Use wall direction Y (pitch) since runningDirection is now always horizontal.
+        // Scale ticks with the wall's upward pitch.
         if (runningWallDirection != null) {
             double wallY = runningWallDirection.normalize().y();
             if (wallY > 0) base = (int) Math.min(base * 3.0, base * (1.0 + wallY * 4.0));
@@ -65,14 +64,13 @@ public class HorizontalWallRun extends Action {
     public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
 		if (runningWallDirection == null) return;
 		if (runningDirection == null) return;
-		// Re-derive wall/run directions each tick so rotation of a moving sub-level
-		// is tracked (runningDirection was computed in world-space at canStart time).
+		// Re-derive each tick so a rotating sub-level tracks correctly.
 		Vec3 newWall = WorldUtil.getRunnableWall(player, player.getBbWidth() * 0.65f);
 		if (newWall != null) {
 			runningWallDirection = newWall;
 			Vec3 perpRaw = newWall.normalize().yRot((float) (Math.PI / 2));
 			Vec3 perp3d = new Vec3(perpRaw.x(), 0, perpRaw.z()).normalize();
-			// Preserve run direction — don't flip when the wall rotates slightly.
+			// Don't flip run direction on small wall rotations.
 			runningDirection = perp3d.dot(runningDirection) >= 0 ? perp3d : perp3d.reverse();
 		}
 		Vec3 lookVec = VectorUtil.fromYawDegree(player.yBodyRot);
@@ -84,8 +82,6 @@ public class HorizontalWallRun extends Action {
 		);
 		bodyYaw = (float) VectorUtil.toYawDegree(lookVec.yRot((float) (differenceAngle / 10)));
 		Vec3 movement = player.getDeltaMovement();
-		// Probe just past the bounding box edge so sub-level blocks (which may sit
-		// well inside a vanilla block cell) are found by getSubLevelBlockState.
 		Vec3 wallProbe = runningWallDirection.normalize().scale(player.getBbWidth() * 0.5 + 0.1);
 		BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallProbe, 0.5);
 		if (!player.getCommandSenderWorld().isLoaded(leanedBlock)) return;
@@ -96,9 +92,7 @@ public class HorizontalWallRun extends Action {
             if (attr != null) {
                 speedScale *= attr.getValue() / attr.getBaseValue();
             }
-            // Vertical decay applies along the sub-level's localY (gravity relative to the
-            // sub-level); in-plane displacement is handled by Sable's floor tracking, so we
-            // only add the localY component here to avoid double-counting.
+            // Sable in-plane motion is applied by floor tracking; only compose localY here.
             SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
             Vec3 runHoriz = frame.projectOntoFloor(new Vec3(runningDirection.x() * speedScale, 0, runningDirection.z() * speedScale));
             double decayedUp = frame.verticalComponent(movement) * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo());
@@ -165,8 +159,7 @@ public class HorizontalWallRun extends Action {
 		if (!(player instanceof LocalPlayer localPlayer)) return false;
 		if (localPlayer.input == null) return false;
 		var moveVector = localPlayer.input.getMoveVector();
-		// Use body yaw (which tracks the run direction) rather than head yaw so the
-		// "push away from wall" check is unaffected by where the player is looking.
+		// Use body yaw so input direction doesn't depend on where the player is looking.
 		var actualInputVector
 				= new Vec3(moveVector.x, 0, moveVector.y)
 				.normalize()

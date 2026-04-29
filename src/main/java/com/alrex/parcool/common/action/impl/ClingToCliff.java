@@ -118,18 +118,14 @@ public class ClingToCliff extends Action {
 	@Override
 	public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
-        // Base motion is the sub-level's localY displacement only: in-plane co-movement is
-        // handled by Sable floor tracking (adding it here would double-count), and pressing
-        // horizontally into the wall normal would fight collision resolution.
+        // Sable in-plane motion is applied by floor tracking; only compose localY here.
         SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.5 + 0.5);
         Vec3 baseDelta = frame.localY().scale(frame.verticalComponent(frame.displacement()));
         if (KeyBindings.isLeftAndRightDown()) {
 			player.setDeltaMovement(baseDelta);
 		} else {
 			if (clingWallDirection != null && facingDirection == FacingDirection.ToWall) {
-				// Edge traversal = up × wallNormal.  For vanilla/Y-rotated this reduces to
-				// yRot(π/2) on the wall normal; a pitched sub-level gains a Y component so
-				// movement follows the tilted edge.
+				// Edge traversal = localY x wallNormal so it follows tilted decks.
 				Vec3 traversal = frame.localY().cross(clingWallDirection.normalize()).normalize();
 				Vec3 vec = traversal.scale(0.1);
                 if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(vec.add(baseDelta));

@@ -151,11 +151,10 @@ public class WallJump extends Action {
 			type = WallJumpAnimationType.SwingLeftArm;
 		}
 
-        // Up-boost along the sub-level's localY so jumps launch "up relative to the deck"
-        // on pitched or side-flipped sub-levels, not straight up in world space.
+        // Up-boost along localY so jumps go "up relative to the deck" on tilted sub-levels.
         SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
         double lookAngleY = player.getLookAngle().normalize().y();
-        if (lookAngleY > 0.5) { // Looking upward
+        if (lookAngleY > 0.5) {
             jumpDirection = jumpDirection.add(frame.localY().scale(lookAngleY * 2)).normalize();
         } else {
             jumpDirection = jumpDirection.add(frame.localY()).normalize();
@@ -195,8 +194,7 @@ public class WallJump extends Action {
 				WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
 				: 0.6f;
 
-		// Compose in the sub-level's frame so the launch impulse points "up relative to the
-		// deck" (localY), not world-Y.  Reduces to the original expression on a flat world.
+		// Compose in the sub-level's frame so the impulse goes up relative to the deck.
 		SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
 		double motionUp = frame.verticalComponent(motion);
 		double jumpUp = frame.verticalComponent(jumpMotion);

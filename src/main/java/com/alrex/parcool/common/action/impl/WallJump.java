@@ -202,10 +202,11 @@ public class WallJump extends Action {
             ySpeed = motion.y() > jumpMotion.y() ? motion.y + jumpMotion.y() : jumpMotion.y();
             spawnJumpParticles(player, wallDirection, jumpDirection);
 		}
+		Vec3 base = WorldUtil.subLevelDisplacementAt(player);
 		player.setDeltaMovement(
-                motion.x() + jumpMotion.x(),
-				ySpeed,
-                motion.z() + jumpMotion.z()
+                motion.x() + jumpMotion.x() + base.x,
+				ySpeed + base.y,
+                motion.z() + jumpMotion.z() + base.z
 		);
 
 		WallJumpAnimationType type = WallJumpAnimationType.fromCode(startData.get());

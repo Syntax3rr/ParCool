@@ -84,6 +84,7 @@ configurations {
 
 repositories {
     maven { url = 'https://maven.blamejared.com' }
+    maven { url = 'https://maven.ryanhcode.dev/releases' }
 }
 dependencies {
     runtimeOnly "vazkii.patchouli:Patchouli:${patchouli_version}"
@@ -97,6 +98,9 @@ dependencies {
 
     compileOnly "curse.maven:EpicFight-405076:7489617"
     runtimeOnly "curse.maven:EpicFight-405076:7489617"
+
+    compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.4.2"
+    compileOnly "dev.ryanhcode.sable:sable-neoforge-1.21.1:1.0.6"
 }
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {

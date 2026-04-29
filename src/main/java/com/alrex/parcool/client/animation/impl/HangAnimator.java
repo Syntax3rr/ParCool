@@ -18,8 +18,7 @@ public class HangAnimator extends Animator {
 	@Override
 	public void animatePost(Player player, Parkourability parkourability, PlayerModelTransformer transformer) {
 		HangDown hangDown = parkourability.get(HangDown.class);
-		HangDown.BarAxis axis = hangDown.getHangingBarAxis();
-		if (axis == null) return;
+		if (hangDown.getHangingBarAxis() == null) return;
 		boolean orthogonal = hangDown.isOrthogonalToBar();
         transformer
                 .translateRightArm(0.3f, -2.0f, 0)

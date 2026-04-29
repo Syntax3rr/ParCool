@@ -81,10 +81,12 @@ public class HorizontalWallRun extends Action {
             if (attr != null) {
                 speedScale *= attr.getValue() / attr.getBaseValue();
             }
+			Vec3 base = WorldUtil.subLevelDisplacementAt(player);
+			double yMotion = movement.y() * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo());
 			player.setDeltaMovement(
-                    runningDirection.x() * speedScale,
-					movement.y() * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo()),
-                    runningDirection.z() * speedScale
+                    runningDirection.x() * speedScale + base.x,
+					yMotion + base.y,
+                    runningDirection.z() * speedScale + base.z
 			);
 		}
 	}

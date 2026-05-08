@@ -110,7 +110,7 @@ public class WallJump extends Action {
 
 	@OnlyIn(Dist.CLIENT)
 	public boolean checkCanStart(Player player, Parkourability parkourability, ByteBuffer startInfo) {
-		Vec3 wallDirection = WorldUtil.getWall(player, player.getBbWidth() * 0.65);
+		Vec3 wallDirection = WorldUtil.getWallNotInFacing(player, player.getBbWidth() * 0.65);
 		Vec3 jumpDirection = getJumpDirection(player, wallDirection);
 		if (jumpDirection == null) return false;
 		ClingToCliff cling = parkourability.get(ClingToCliff.class);
@@ -152,13 +152,12 @@ public class WallJump extends Action {
 			type = WallJumpAnimationType.SwingLeftArm;
 		}
 
-        // Up-boost along localY so jumps go "up relative to the deck" on tilted sub-levels.
-        SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
+        // Player is world-vertical: up-boost is world-up regardless of sub-level orientation.
         double lookAngleY = player.getLookAngle().normalize().y();
         if (lookAngleY > 0.5) {
-            jumpDirection = jumpDirection.add(frame.localY().scale(lookAngleY * 2)).normalize();
+            jumpDirection = jumpDirection.add(0, lookAngleY * 2, 0).normalize();
         } else {
-            jumpDirection = jumpDirection.add(frame.localY()).normalize();
+            jumpDirection = jumpDirection.add(0, 1, 0).normalize();
         }
 		startInfo
 				.putDouble(jumpDirection.x())
@@ -199,10 +198,11 @@ public class WallJump extends Action {
 				WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
 				: 0.6f;
 
-		// Compose in the sub-level's frame so the impulse goes up relative to the deck.
+		// Player is world-vertical, so split into world-XZ and world-Y; ride the
+		// sub-level's per-tick translation via applyDisplacement.
 		SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
-		double motionUp = frame.verticalComponent(motion);
-		double jumpUp = frame.verticalComponent(jumpMotion);
+		double motionUp = motion.y;
+		double jumpUp = jumpMotion.y;
 		double newUp;
 		if (slipperiness > 0.9) {// icy blocks
 			newUp = motionUp;
@@ -210,8 +210,8 @@ public class WallJump extends Action {
 			newUp = motionUp > jumpUp ? motionUp + jumpUp : jumpUp;
 			spawnJumpParticles(player, wallDirection, jumpDirection);
 		}
-		Vec3 floorMotion = frame.projectOntoFloor(motion).add(frame.projectOntoFloor(jumpMotion));
-		player.setDeltaMovement(frame.applyDisplacement(floorMotion.add(frame.localY().scale(newUp))));
+		Vec3 horiz = new Vec3(motion.x + jumpMotion.x, 0, motion.z + jumpMotion.z);
+		player.setDeltaMovement(frame.applyDisplacement(horiz.add(0, newUp, 0)));
 
 		WallJumpAnimationType type = WallJumpAnimationType.fromCode(startData.get());
 		Animation animation = Animation.get(player);

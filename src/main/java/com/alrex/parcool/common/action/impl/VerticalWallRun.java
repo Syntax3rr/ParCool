@@ -55,7 +55,7 @@ public class VerticalWallRun extends Action {
 				&& parkourability.getAdditionalProperties().getLastSprintingTick() > 12
 				&& lookVec.y() > 0;
 		if (able) {
-			Vec3 wall = WorldUtil.getWall(player, player.getBbWidth() * 0.65);
+			Vec3 wall = WorldUtil.getWallInFacing(player, player.getBbWidth() * 0.65);
 			if (wall == null) return false;
 			wall = wall.normalize();
 			if (wall.dot(VectorUtil.fromYawDegree(player.getYHeadRot())) > 0.93) {
@@ -78,7 +78,7 @@ public class VerticalWallRun extends Action {
 
 	@Override
     public boolean canContinue(Player player, Parkourability parkourability) {
-		Vec3 wall = WorldUtil.getWall(player, player.getBbWidth() * 0.75);
+		Vec3 wall = WorldUtil.getWallInFacing(player, player.getBbWidth() * 0.75);
 		if (wall == null) return false;
 		wall = wall.normalize();
 		return (wall.dot(VectorUtil.fromYawDegree(player.getYHeadRot())) > 0.93

@@ -68,7 +68,7 @@ public class HangDown extends Action {
 	@OnlyIn(Dist.CLIENT)
 	@Override
     public boolean canContinue(Player player, Parkourability parkourability) {
-        return (!player.getData(Attachments.STAMINA).isExhausted()
+        return ((!player.getData(Attachments.STAMINA).isExhausted() || parkourability.getActionInfo().getStaminaConsumptionOf(HangDown.class) == 0)
 				&& KeyBindings.getKeyHangDown().isDown()
 				&& parkourability.getActionInfo().can(HangDown.class)
 				&& !parkourability.get(JumpFromBar.class).isDoing()

@@ -48,7 +48,7 @@ public class WallSlide extends Action {
 
 	@Override
     public boolean canContinue(Player player, Parkourability parkourability) {
-		Vec3 wall = WorldUtil.getWall(player);
+		Vec3 wall = WorldUtil.getAnyWall(player, player.getBbWidth() * 0.5);
 		return (wall != null
 				&& !player.onGround()
 				&& !parkourability.get(FastRun.class).isDoing()
@@ -56,7 +56,7 @@ public class WallSlide extends Action {
 				&& !player.getAbilities().flying
 				&& player.getDeltaMovement().y <= 0
 				&& KeyBindings.getKeyWallSlide().isDown()
-                && !player.getData(Attachments.STAMINA).isExhausted()
+                && (!player.getData(Attachments.STAMINA).isExhausted() || parkourability.getActionInfo().getStaminaConsumptionOf(WallSlide.class) == 0)
                 && !parkourability.get(Dive.class).isDoing()
 				&& !parkourability.get(ClingToCliff.class).isDoing()
 				&& parkourability.get(ClingToCliff.class).getNotDoingTick() > 12
@@ -103,7 +103,7 @@ public class WallSlide extends Action {
 
 	@Override
     public void onWorkingTick(Player player, Parkourability parkourability) {
-		leanedWallDirection = WorldUtil.getWall(player);
+		leanedWallDirection = WorldUtil.getAnyWall(player, player.getBbWidth() * 0.5);
 		if (leanedWallDirection != null) {
 			BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, leanedWallDirection, 0.75);
 			if (!player.getCommandSenderWorld().isLoaded(leanedBlock)) return;

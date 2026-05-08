@@ -66,13 +66,46 @@ public class Slide extends Action {
 
 	@Override
 	public boolean canContinue(Player player, Parkourability parkourability) {
+        if (!parkourability.get(Crawl.class).isDoing()) return false;
         int maxSlidingTick = Math.min(
                 parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Integers.SlidingContinuableTick),
                 parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Integers.MaxSlidingContinuableTick)
         );
-		return getDoingTick() < maxSlidingTick
-				&& parkourability.get(Crawl.class).isDoing();
+        if (getDoingTick() < maxSlidingTick) return true;
+        return canSustainSlide(player);
 	}
+
+    // Past the tick cap, the slide is allowed to continue when the terrain itself
+    // could sustain a slide — magnitude of slope, not signed by current direction.
+    // This lets an uphill traverse ride out, decay to zero, reverse via the existing
+    // mechanism in onWorkingTickInLocalClient, and accelerate back down the same hill.
+    private boolean canSustainSlide(Player player) {
+        if (slidingVec == null) return false;
+        SableLocalFrame frame = SableLocalFrame.at(player, 0.5);
+        float slipperiness = getFloorSlipperiness(player, frame);
+        double slope = frame.isSubLevel()
+                ? SableCompat.getSubLevelSlopeInDirection(player.level(), player.position(), slidingVec)
+                : getTerrainSlope(player, slidingVec);
+        double slopeCos = 1.0 / Math.sqrt(1.0 + slope * slope);
+        double frictionLoss = (1.0 - slipperiness) * BASE_FRICTION * slopeCos;
+        double slopeGain = Math.abs(slope) * slipperiness * SLOPE_ACCEL;
+        return slopeGain >= frictionLoss;
+    }
+
+    // Reads slipperiness of the block underfoot.  On a Sable sub-level we have to
+    // probe in the sub-level's local frame — a world-Y "below" lookup lands in air
+    // once the sub-level is rotated, which silently makes ice feel like grass.
+    private static float getFloorSlipperiness(Player player, SableLocalFrame frame) {
+        BlockPos belowPos = player.blockPosition().below();
+        if (frame.isSubLevel()) {
+            BlockState floor = SableCompat.getSubLevelFloorBlockState(player.level(), player.position());
+            if (floor != null && !floor.isAir()) {
+                return floor.getFriction(player.level(), belowPos, player);
+            }
+        }
+        return WorldUtil.getBlockStateAt(player.level(), belowPos)
+                .getFriction(player.level(), belowPos, player);
+    }
 
 	@Override
 	public void onStartInLocalClient(Player player, Parkourability parkourability, ByteBuffer startData) {
@@ -116,13 +149,13 @@ public class Slide extends Action {
                 ? SableCompat.getSubLevelSlopeInDirection(player.level(), player.position(), effectiveSlideVec)
                 : getTerrainSlope(player, effectiveSlideVec);
 
-        // Slipperiness of the block underfoot.
-        BlockPos belowPos = player.blockPosition().below();
-        float slipperiness = WorldUtil.getBlockStateAt(player.level(), belowPos)
-                .getFriction(player.level(), belowPos, player);
+        // Slipperiness of the block underfoot (sable-aware so rotated sub-levels read correctly).
+        float slipperiness = getFloorSlipperiness(player, frame);
 
-        // Friction: decay proportional to (1 - slipperiness), so ice retains speed much longer.
-        slideSpeed *= 1.0 - (1.0 - slipperiness) * BASE_FRICTION;
+        // Friction: decay proportional to (1 - slipperiness), modulated by cos(slope angle)
+        // so the normal force shrinks on steep ground, matching how kinetic friction scales.
+        double slopeCos = 1.0 / Math.sqrt(1.0 + slope * slope);
+        slideSpeed *= 1.0 - (1.0 - slipperiness) * BASE_FRICTION * slopeCos;
         // Slope contribution: combines slope steepness with slipperiness so steep ice gives the
         // strongest effect; gentle grass slopes barely register.
         slideSpeed -= slope * slipperiness * SLOPE_ACCEL;

@@ -32,4 +32,19 @@ public record SableLocalFrame(
     public Vec3 applyDisplacement(Vec3 delta) {
         return delta.add(displacement);
     }
+
+    // World-up expressed in the local basis has coefficients (localX·up, localY·up,
+    // localZ·up); the largest |coefficient| names the local axis closest to world-up,
+    // and its sign tells us how to flip that axis so it actually points world-upward.
+    public Vec3 uprightAxis() {
+        final Vec3 worldUp = new Vec3(0, 1, 0);
+        double px = localX.dot(worldUp);
+        double py = localY.dot(worldUp);
+        double pz = localZ.dot(worldUp);
+        Vec3 axis;     double proj;
+        if      (Math.abs(px) >= Math.abs(py) && Math.abs(px) >= Math.abs(pz)) { axis = localX; proj = px; }
+        else if (Math.abs(py) >= Math.abs(pz))                                  { axis = localY; proj = py; }
+        else                                                                    { axis = localZ; proj = pz; }
+        return proj < 0 ? axis.scale(-1) : axis;
+    }
 }

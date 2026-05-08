@@ -119,15 +119,18 @@ public class ClingToCliff extends Action {
 	@Override
 	public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
-        // Sable in-plane motion is applied by floor tracking; only compose localY here.
+        // Player is world-vertical, so gravity neutralization is along world-Y; only the
+        // sub-level's world-vertical motion needs to be carried for moving platforms.
         SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.5 + 0.5);
-        Vec3 baseDelta = frame.localY().scale(frame.verticalComponent(frame.displacement()));
+        Vec3 baseDelta = new Vec3(0, frame.displacement().y, 0);
         if (KeyBindings.isLeftAndRightDown()) {
 			player.setDeltaMovement(baseDelta);
 		} else {
 			if (clingWallDirection != null && facingDirection == FacingDirection.ToWall) {
-				// Edge traversal = localY x wallNormal so it follows tilted decks.
-				Vec3 traversal = frame.localY().cross(clingWallDirection.normalize()).normalize();
+				// Use the sub-level's "up" axis re-signed so it points world-upward, so
+				// traversal still follows tilted decks but doesn't flip on upside-down
+				// or sideways orientations.
+				Vec3 traversal = frame.uprightAxis().cross(clingWallDirection.normalize()).normalize();
 				double speedMod = Math.min(
 						parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Doubles.ClingToCliffSpeedModifier),
 						parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxClingToCliffSpeedModifier)

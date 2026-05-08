@@ -663,6 +663,10 @@ public class ParCoolConfig {
 					ConfigGroup.Control, "Allow disabling cooldown of wall jump",
 					"allow_disabling_wall_jump_cooldown", true, true
 			),
+			RequireJustTimeBreakfall(
+					ConfigGroup.Control, "Require just-time input for breakfall damage reduction to apply",
+					"require_just_time_breakfall", false, false
+			),
             DodgeProvideInvulnerableFrame(
                     ConfigGroup.Other, "Enable invulnerable time by Dodge",
                     "enable_dodge_invulnerable_time", true, true
@@ -1010,15 +1014,6 @@ public class ParCoolConfig {
 					}
                     builder.pop();
 					register(builder, ConfigGroup.Stamina);
-				}
-				builder.pop();
-				builder.push("Control");
-				{
-					register(builder, ConfigGroup.Control);
-				}
-				builder.push("Modifier");
-				{
-					register(builder, ConfigGroup.Modifier);
 				}
 				builder.pop();
 				builder.push("Control");

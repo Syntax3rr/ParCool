@@ -203,8 +203,10 @@ public class ActionProcessor {
 	private void checkAndChangeActionState(Player player, Parkourability parkourability, Action action, LinkedList<ActionStatePayload.Entry> syncStates) {
 		if (!(player instanceof LocalPlayer localPlayer)) return;
 		if (action.isDoing()) {
+			boolean notExhaustedOrFree = !player.getData(Attachments.STAMINA).isExhausted()
+					|| parkourability.getActionInfo().getStaminaConsumptionOf(action.getClass()) == 0;
 			boolean canContinue = parkourability.getActionInfo().can(action.getClass())
-					&& !player.getData(Attachments.STAMINA).isExhausted()
+					&& notExhaustedOrFree
 					&& !NeoForge.EVENT_BUS.post(new ParCoolActionEvent.TryToContinueEvent(player, action)).isCanceled()
 					&& !NeoForge.EVENT_BUS.post(new ParCoolActionEvent.TryToContinue(player, action)).isCanceled()
 					&& action.canContinue(player, parkourability);
@@ -217,8 +219,10 @@ public class ActionProcessor {
 			}
 		} else {
 			bufferOfStarting.clear();
+			boolean notExhaustedOrFree = !player.getData(Attachments.STAMINA).isExhausted()
+					|| parkourability.getActionInfo().getStaminaConsumptionOf(action.getClass()) == 0;
 			boolean start = !player.isSpectator()
-					&& !player.getData(Attachments.STAMINA).isExhausted()
+					&& notExhaustedOrFree
 					&& parkourability.getActionInfo().can(action.getClass())
 					&& !NeoForge.EVENT_BUS.post(new ParCoolActionEvent.TryToStartEvent(player, action)).isCanceled()
 					&& !NeoForge.EVENT_BUS.post(new ParCoolActionEvent.TryToStart(player, action)).isCanceled()

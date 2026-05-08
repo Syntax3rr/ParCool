@@ -40,6 +40,10 @@ class SableCompatImpl {
         return false;
     }
 
+    static AABB worldToLocalAABB(SubLevelHandle handle, AABB worldAABB) {
+        return transformAABBToLocal(worldAABB, ((SubLevelAccess) handle.sla).logicalPose());
+    }
+
     static boolean hasSubLevelCollision(Level level, AABB aabb) {
         BoundingBox3d box = new BoundingBox3d(aabb);
         for (SubLevelAccess sla : SableCompanion.INSTANCE.getAllIntersecting(level, box)) {
@@ -58,6 +62,31 @@ class SableCompatImpl {
             Vec3 worldCenter = Vec3.atCenterOf(pos);
             Vec3 local = sla.logicalPose().transformPositionInverse(worldCenter);
             return subLevel.getLevel().getBlockState(BlockPos.containing(local.x, local.y, local.z));
+        }
+        return null;
+    }
+
+    // Floor lookup that respects arbitrary sub-level rotation.  The player is always
+    // world-vertical, so the contact direction is world -Y regardless of how the
+    // sub-level is oriented.  We step down in world space, transform each probe point
+    // into the sub-level's local frame, and read the block there — this is correct
+    // even when local Y points sideways or upside-down in world space.  Multiple
+    // depths absorb the small collision-tolerance gap between foot and surface.
+    @Nullable
+    static BlockState getSubLevelFloorBlockState(Level level, Vec3 worldFootPos) {
+        AABB probeAabb = new AABB(worldFootPos.x - 0.05, worldFootPos.y - 0.6, worldFootPos.z - 0.05,
+                                  worldFootPos.x + 0.05, worldFootPos.y + 0.05, worldFootPos.z + 0.05);
+        BoundingBox3d box = new BoundingBox3d(probeAabb);
+        double[] depths = {0.05, 0.15, 0.3, 0.5};
+        for (SubLevelAccess sla : SableCompanion.INSTANCE.getAllIntersecting(level, box)) {
+            if (!(sla instanceof SubLevel subLevel)) continue;
+            Pose3dc pose = sla.logicalPose();
+            for (double d : depths) {
+                Vec3 local = pose.transformPositionInverse(worldFootPos.add(0, -d, 0));
+                BlockState state = subLevel.getLevel().getBlockState(
+                        BlockPos.containing(local.x, local.y, local.z));
+                if (!state.isAir()) return state;
+            }
         }
         return null;
     }

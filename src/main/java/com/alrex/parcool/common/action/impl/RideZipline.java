@@ -86,7 +86,7 @@ public class RideZipline extends Action {
         return KeyBindings.getKeyRideZipline().isDown()
                 && !KeyRecorder.keyJumpState.isPressed()
                 && !player.isInWall()
-                && !player.getData(Attachments.STAMINA).isExhausted()
+                && (!player.getData(Attachments.STAMINA).isExhausted() || parkourability.getActionInfo().getStaminaConsumptionOf(RideZipline.class) == 0)
                 && ridingZipline != null
                 && ridingZipline.isAlive()
                 && 0 <= currentT && currentT <= 1;

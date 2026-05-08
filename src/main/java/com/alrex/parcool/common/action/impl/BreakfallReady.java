@@ -23,9 +23,12 @@ public class BreakfallReady extends Action {
 		if (!(player instanceof LocalPlayer localPlayer)) return;
         boolean playSound = false;
 		if (justTimed && ParCoolConfig.Client.Booleans.EnableJustTimeEffectOfBreakfall.get()) {
-			if (ParCoolConfig.Client.Booleans.EnableActionSounds.get()
-					&& ParCoolConfig.Client.Booleans.EnableSoundOfJustTimeBreakfall.get())
-				player.playSound(SoundEvents.BREAKFALL_JUST_TIME.get(), 1, 1);
+			if (ParCoolConfig.Client.Booleans.EnableActionSounds.get()) {
+				if (ParCoolConfig.Client.Booleans.EnableSoundOfJustTimeBreakfall.get())
+					player.playSound(SoundEvents.BREAKFALL_JUST_TIME.get(), 1, 1);
+				else
+					playSound = true;
+			}
 			if (ParCoolConfig.Client.Booleans.EnableActionParticles.get()
 					&& ParCoolConfig.Client.Booleans.EnableActionParticlesOfJustTimeBreakfall.get()
 			) {
@@ -68,7 +71,7 @@ public class BreakfallReady extends Action {
 	@Override
     public boolean canContinue(Player player, Parkourability parkourability) {
 		return (KeyBindings.getKeyBreakfall().isDown()
-                && !player.getData(Attachments.STAMINA).isExhausted()
+                && (!player.getData(Attachments.STAMINA).isExhausted() || parkourability.getActionInfo().getStaminaConsumptionOf(BreakfallReady.class) == 0)
 				&& !parkourability.get(Crawl.class).isDoing()
 				&& !player.isInWaterOrBubble()
 				&& (!player.onGround() || parkourability.getAdditionalProperties().getLandingTick() < 3)

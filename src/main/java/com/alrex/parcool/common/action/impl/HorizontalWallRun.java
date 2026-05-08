@@ -42,10 +42,12 @@ public class HorizontalWallRun extends Action {
         Integer value = info.getClientSetting().get(ParCoolConfig.Client.Integers.WallRunContinuableTick);
         if (value == null) value = ParCoolConfig.Client.Integers.WallRunContinuableTick.DefaultValue;
         int base = Math.min(value, info.getServerLimitation().get(ParCoolConfig.Server.Integers.MaxWallRunContinuableTick));
-        // Scale ticks with the wall's upward pitch.
+        // Scale ticks with the wall's upward facing: wallY < 0 means the player→wall vector
+        // points downward, i.e. the surface normal points more upward — a wall tilted away
+        // from the player (steep ramp). These are easier to maintain so they get more time.
         if (runningWallDirection != null) {
             double wallY = runningWallDirection.normalize().y();
-            if (wallY > 0) base = (int) Math.min(base * 3.0, base * (1.0 + wallY * 4.0));
+            if (wallY < 0) base = (int) Math.min(base * 3.0, base * (1.0 - wallY * 4.0));
         }
         return base;
 	}
@@ -82,7 +84,12 @@ public class HorizontalWallRun extends Action {
 		);
 		bodyYaw = (float) VectorUtil.toYawDegree(lookVec.yRot((float) (differenceAngle / 10)));
 		Vec3 movement = player.getDeltaMovement();
-		Vec3 wallProbe = runningWallDirection.normalize().scale(player.getBbWidth() * 0.5 + 0.1);
+		// Project wall to horizontal for the friction probe — a tilted wall's full 3D
+		// vector has a shortened horizontal component, so scaling it directly lands
+		// the block lookup inside the player instead of on the wall.
+		Vec3 wallHoriz = new Vec3(runningWallDirection.x(), 0, runningWallDirection.z());
+		if (wallHoriz.lengthSqr() < 1e-4) return;
+		Vec3 wallProbe = wallHoriz.normalize().scale(player.getBbWidth() * 0.5 + 0.1);
 		BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallProbe, 0.5);
 		if (!player.getCommandSenderWorld().isLoaded(leanedBlock)) return;
 		float slipperiness = WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player);
@@ -92,12 +99,16 @@ public class HorizontalWallRun extends Action {
                     parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxHWallRunSpeedModifier)
             );
             double speedScale = MovementUtil.getActionMovementSpeed(player) * speedMod;
-            // Sable in-plane motion is applied by floor tracking; only compose localY here.
+            // Player is world-vertical: run direction is world-horizontal, "up" is world-Y,
+            // and we still pick up the sub-level's world-vertical drift for moving platforms.
+            // Clamp preserved Y velocity to ≤ 0: a leaned-back wall pushes the player up
+            // via collision, and feeding that back into decayedUp would runaway-accelerate
+            // them up the wall.  Only downward (gravity-dragged) Y is kept.
             SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
-            Vec3 runHoriz = frame.projectOntoFloor(new Vec3(runningDirection.x() * speedScale, 0, runningDirection.z() * speedScale));
-            double decayedUp = frame.verticalComponent(movement) * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo());
-            double subUp = frame.verticalComponent(frame.displacement());
-            player.setDeltaMovement(runHoriz.add(frame.localY().scale(decayedUp + subUp)));
+            Vec3 runHoriz = new Vec3(runningDirection.x() * speedScale, 0, runningDirection.z() * speedScale);
+            double decayedUp = Math.min(movement.y, 0) * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo());
+            double subUp = frame.displacement().y;
+            player.setDeltaMovement(runHoriz.add(0, decayedUp + subUp, 0));
 		}
 	}
 
@@ -123,7 +134,10 @@ public class HorizontalWallRun extends Action {
 		if (runDirection.dot(lookDirection) < 0) {
 			runDirection = runDirection.reverse();
 		}
-		if (runDirection.y() < -0.17) return false;
+		// A wall tilted away from the player (steep-ramp-like) gives runDirection a downward
+		// Y component; allow these so the bonus-duration scaling can apply.  Cut off only
+		// the truly floor-like cases where the surface stops being a wall.
+		if (runDirection.y() < -0.85) return false;
 		runDirection = new Vec3(runDirection.x(), 0, runDirection.z()).normalize();
 		startInfo.putDouble(wallDirection.x())
 				.putDouble(wallDirection.y())
@@ -169,7 +183,7 @@ public class HorizontalWallRun extends Action {
 			return false;
 		}
 		return (getDoingTick() < getMaxRunningTick(parkourability.getActionInfo())
-                && !player.getData(Attachments.STAMINA).isExhausted()
+                && (!player.getData(Attachments.STAMINA).isExhausted() || parkourability.getActionInfo().getStaminaConsumptionOf(HorizontalWallRun.class) == 0)
 				&& !parkourability.get(WallJump.class).justJumped()
 				&& !parkourability.get(Crawl.class).isDoing()
 				&& !parkourability.get(Dodge.class).isDoing()
@@ -177,7 +191,7 @@ public class HorizontalWallRun extends Action {
 				&& ((ParCoolConfig.Client.getInstance().HWallRunControl.get() == ControlType.PressKey && KeyBindings.getKeyHorizontalWallRun().isDown())
 				|| ParCoolConfig.Client.getInstance().HWallRunControl.get() == ControlType.Auto)
 				&& !player.onGround()
-                && (runningWallDirection == null || runningWallDirection.normalize().y() >= -0.17)
+                && (runningWallDirection == null || runningWallDirection.normalize().y() >= -0.85)
 		);
 	}
 
@@ -261,7 +275,9 @@ public class HorizontalWallRun extends Action {
 		if (runningDirection == null || runningWallDirection == null) return;
 		Level level = player.level();
 		Vec3 pos = player.position();
-		Vec3 wallProbeP = runningWallDirection.normalize().scale(player.getBbWidth() * 0.5 + 0.1);
+		Vec3 wallProbeHoriz = new Vec3(runningWallDirection.x(), 0, runningWallDirection.z());
+		if (wallProbeHoriz.lengthSqr() < 1e-4) return;
+		Vec3 wallProbeP = wallProbeHoriz.normalize().scale(player.getBbWidth() * 0.5 + 0.1);
         BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallProbeP, 0.25);
 		if (!level.isLoaded(leanedBlock)) return;
 		float width = player.getBbWidth();

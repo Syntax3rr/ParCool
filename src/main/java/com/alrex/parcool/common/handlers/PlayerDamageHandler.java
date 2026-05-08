@@ -47,11 +47,11 @@ public class PlayerDamageHandler {
 					ParCoolConfig.Client.Integers.JustTimeBreakfallTick,
 					ParCoolConfig.Server.Integers.MaxJustTimeBreakfallTick
 			);
+  		boolean requireJustTime = parkourability.getServerLimitation().get(ParCoolConfig.Server.Booleans.RequireJustTimeBreakfall);
 			if (parkourability.get(BreakfallReady.class).isDoing()
 					&& (parkourability.getActionInfo().can(Tap.class)
 					|| parkourability.getActionInfo().can(Roll.class))
-					&& ParCoolConfig.Client.Booleans.EnableJustTimeEffectOfBreakfall.get()
-					&& justTime
+					&& (justTime || !requireJustTime)
 			) {
 				float distance = event.getDistance();
 				if (distance > parkourability.getLimitedValue(

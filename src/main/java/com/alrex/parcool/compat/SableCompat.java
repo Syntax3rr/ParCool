@@ -27,6 +27,12 @@ public class SableCompat {
     }
 
     @Nullable
+    public static BlockState getSubLevelFloorBlockState(Level level, Vec3 worldFootPos) {
+        if (!LOADED) return null;
+        return SableCompatImpl.getSubLevelFloorBlockState(level, worldFootPos);
+    }
+
+    @Nullable
     public static SubLevelHandle firstSubLevelInRange(Level level, AABB searchAABB) {
         if (!LOADED) return null;
         return SableCompatImpl.firstInRange(level, searchAABB);
@@ -45,6 +51,11 @@ public class SableCompat {
     public static boolean hasLocalCollision(@Nullable SubLevelHandle handle, AABB localAABB) {
         if (!LOADED || handle == null) return false;
         return SableCompatImpl.hasLocalCollision(handle, localAABB);
+    }
+
+    public static AABB worldToLocalAABB(@Nullable SubLevelHandle handle, AABB worldAABB) {
+        if (!LOADED || handle == null) return worldAABB;
+        return SableCompatImpl.worldToLocalAABB(handle, worldAABB);
     }
 
     public static double getSubLevelSlopeInDirection(Level level, Vec3 worldPos, Vec3 horizontalDir) {

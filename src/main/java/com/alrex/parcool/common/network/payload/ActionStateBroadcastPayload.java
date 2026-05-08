@@ -33,7 +33,7 @@ public record ActionStateBroadcastPayload(List<ActionStatePayload> payloads) imp
             Level world = context.player().level();
             for (var statePayload : payload.payloads()) {
                 player = world.getPlayerByUUID(statePayload.playerID());
-                if (player == null || player.isLocalPlayer()) return;
+                if (player == null || player.isLocalPlayer()) continue;
 
                 statePayload.processPlayer(player);
             }

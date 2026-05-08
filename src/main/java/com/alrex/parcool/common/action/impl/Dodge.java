@@ -12,6 +12,7 @@ import com.alrex.parcool.common.attachment.common.Parkourability;
 import com.alrex.parcool.common.info.ActionInfo;
 import com.alrex.parcool.config.ParCoolConfig;
 import com.alrex.parcool.extern.AdditionalMods;
+import com.alrex.parcool.utilities.MovementUtil;
 import com.alrex.parcool.utilities.VectorUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -190,7 +191,7 @@ public class Dodge extends Action {
 		var cameraEntity = Minecraft.getInstance().getCameraEntity();
 		var cameraYRot = cameraEntity != null ? cameraEntity.getYRot() : 0;
 		dodgeVec = VectorUtil.rotateYDegrees(dodgeVec, cameraYRot);
-		dodgeVec = dodgeVec.scale(0.9 * getSpeedModifier(parkourability.getActionInfo()));
+		dodgeVec = dodgeVec.scale(MovementUtil.getActionMovementSpeed(player) * 9.0 * getSpeedModifier(parkourability.getActionInfo()));
 		if (AdditionalMods.isCameraDecoupled()) player.setYRot(VectorUtil.toYaw(dodgeVec));
 		player.setDeltaMovement(dodgeVec);
 

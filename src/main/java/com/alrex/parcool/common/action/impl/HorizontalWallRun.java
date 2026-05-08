@@ -12,6 +12,7 @@ import com.alrex.parcool.common.info.ActionInfo;
 import com.alrex.parcool.config.ParCoolConfig;
 import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.utilities.BufferUtil;
+import com.alrex.parcool.utilities.MovementUtil;
 import com.alrex.parcool.utilities.VectorUtil;
 import com.alrex.parcool.utilities.WorldUtil;
 import net.minecraft.client.player.LocalPlayer;
@@ -19,7 +20,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.util.Mth;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.RenderShape;
@@ -87,11 +87,11 @@ public class HorizontalWallRun extends Action {
 		if (!player.getCommandSenderWorld().isLoaded(leanedBlock)) return;
 		float slipperiness = WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player);
 		if (slipperiness <= 0.8) {
-            double speedScale = 0.2;
-            var attr = player.getAttribute(Attributes.MOVEMENT_SPEED);
-            if (attr != null) {
-                speedScale *= attr.getValue() / attr.getBaseValue();
-            }
+            double speedMod = Math.min(
+                    parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Doubles.HWallRunSpeedModifier),
+                    parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxHWallRunSpeedModifier)
+            );
+            double speedScale = MovementUtil.getActionMovementSpeed(player) * speedMod;
             // Sable in-plane motion is applied by floor tracking; only compose localY here.
             SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
             Vec3 runHoriz = frame.projectOntoFloor(new Vec3(runningDirection.x() * speedScale, 0, runningDirection.z() * speedScale));

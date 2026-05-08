@@ -11,6 +11,7 @@ import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
 import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.config.ParCoolConfig;
+import com.alrex.parcool.utilities.MovementUtil;
 import com.alrex.parcool.utilities.WorldUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
@@ -185,7 +186,11 @@ public class WallJump extends Action {
 		if (ParCoolConfig.Client.Booleans.EnableActionSounds.get())
             player.playSound(SoundEvents.WALL_JUMP.get(), 1f, 1f);
         Vec3 jumpDirection = new Vec3(startData.getDouble(), startData.getDouble(), startData.getDouble());
-        Vec3 jumpMotion = jumpDirection.scale(0.59);
+        double speedMod = Math.min(
+                parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Doubles.WallJumpSpeedModifier),
+                parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxWallJumpSpeedModifier)
+        );
+        Vec3 jumpMotion = jumpDirection.scale(MovementUtil.getActionMovementSpeed(player) * speedMod);
 		Vec3 wallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
 		Vec3 motion = player.getDeltaMovement();
 

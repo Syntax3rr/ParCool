@@ -11,6 +11,7 @@ import com.alrex.parcool.common.attachment.Attachments;
 import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
 import com.alrex.parcool.config.ParCoolConfig;
+import com.alrex.parcool.utilities.MovementUtil;
 import com.alrex.parcool.utilities.VectorUtil;
 import com.alrex.parcool.utilities.WorldUtil;
 import net.minecraft.world.entity.player.Player;
@@ -112,7 +113,11 @@ public class HangDown extends Action {
 	@Override
     public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
 		Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot);
-		final double speed = 0.1;
+		double speedMod = Math.min(
+				parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Doubles.HangDownSpeedModifier),
+				parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxHangDownSpeedModifier)
+		);
+		final double speed = MovementUtil.getActionMovementSpeed(player) * speedMod;
 		double xSpeed = 0, zSpeed = 0;
 		// Sable in-plane motion is already applied by floor tracking; only compose the
 		// localY (gravity-axis) component here to avoid double-counting.

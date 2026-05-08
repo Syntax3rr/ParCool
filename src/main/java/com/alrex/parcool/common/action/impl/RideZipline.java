@@ -132,8 +132,6 @@ public class RideZipline extends Action {
     @Override
     public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
         if (ridingZipline == null) return;
-        var speedAttr = player.getAttribute(Attributes.MOVEMENT_SPEED);
-        if (speedAttr == null) return;
         if (!(player instanceof LocalPlayer localPlayer)) return;
         double oldSpeed = speed;
         Zipline zipline = ridingZipline.getZipline();
@@ -151,7 +149,7 @@ public class RideZipline extends Action {
                     .multiply(1, 0, 1)
                     .normalize()
                     .dot(new Vec3(offset.x(), 0, offset.z()).normalize());
-            speed += Math.min(dot * 0.01 * (speedAttr.getValue() / speedAttr.getBaseValue()), 0.08);
+            speed += Math.min(dot * 0.01 * parkourability.get(FastRun.class).getSpeedRatio(player), 0.08);
         }
         currentT = (float) zipline.getMovedPositionByParameterApproximately(currentT, (float) speed);
         acceleration = speed - oldSpeed;

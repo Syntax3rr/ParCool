@@ -25,7 +25,7 @@ public class FastRun extends Action {
 		PressKey, Toggle, Auto
 	}
 
-	private static final ResourceLocation FAST_RUNNING_MODIFIER = ResourceLocation.fromNamespaceAndPath(ParCool.MOD_ID, "modifier.speed.fastrun");
+	public static final ResourceLocation FAST_RUNNING_MODIFIER = ResourceLocation.fromNamespaceAndPath(ParCool.MOD_ID, "modifier.speed.fastrun");
 	private double speedModifier = 0;
 	private boolean toggleStatus = false;
 	private int lastDashTick = 0;
@@ -35,6 +35,16 @@ public class FastRun extends Action {
                 info.getClientSetting().get(ParCoolConfig.Client.Doubles.FastRunSpeedModifier),
                 info.getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxFastRunSpeedModifier)
         );
+	}
+
+	public double getSpeedRatio(Player player) {
+		if (!isDoing()) return 1.0;
+		var attr = player.getAttribute(Attributes.MOVEMENT_SPEED);
+		if (attr == null) return 1.0;
+		var modifier = attr.getModifier(FAST_RUNNING_MODIFIER);
+		if (modifier == null) return 1.0;
+		double base = attr.getBaseValue();
+		return base > 0 ? (base + modifier.amount()) / base : 1.0;
 	}
 
 	@Override

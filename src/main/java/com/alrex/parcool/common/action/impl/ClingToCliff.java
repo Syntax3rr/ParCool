@@ -11,6 +11,7 @@ import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
 import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.config.ParCoolConfig;
+import com.alrex.parcool.utilities.MovementUtil;
 import com.alrex.parcool.utilities.VectorUtil;
 import com.alrex.parcool.utilities.WorldUtil;
 import net.minecraft.world.entity.player.Player;
@@ -127,7 +128,11 @@ public class ClingToCliff extends Action {
 			if (clingWallDirection != null && facingDirection == FacingDirection.ToWall) {
 				// Edge traversal = localY x wallNormal so it follows tilted decks.
 				Vec3 traversal = frame.localY().cross(clingWallDirection.normalize()).normalize();
-				Vec3 vec = traversal.scale(0.1);
+				double speedMod = Math.min(
+						parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Doubles.ClingToCliffSpeedModifier),
+						parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxClingToCliffSpeedModifier)
+				);
+				Vec3 vec = traversal.scale(MovementUtil.getActionMovementSpeed(player) * speedMod);
                 if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(vec.add(baseDelta));
                 else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(vec.reverse().add(baseDelta));
 				else player.setDeltaMovement(baseDelta);

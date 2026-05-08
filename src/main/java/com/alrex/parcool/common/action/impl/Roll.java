@@ -8,6 +8,7 @@ import com.alrex.parcool.common.action.StaminaConsumeTiming;
 import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
 import com.alrex.parcool.config.ParCoolConfig;
+import com.alrex.parcool.utilities.MovementUtil;
 import com.alrex.parcool.utilities.VectorUtil;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -86,7 +87,11 @@ public class Roll extends Action {
 	public void onStartInLocalClient(Player player, Parkourability parkourability, ByteBuffer startData) {
 		startRequired = false;
 		Direction direction = Direction.values()[startData.getInt()];
-		double modifier = Math.sqrt(player.getBbWidth());
+		double speedMod = Math.min(
+				parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Doubles.RollSpeedModifier),
+				parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxRollSpeedModifier)
+		);
+		double modifier = Math.sqrt(player.getBbWidth()) * MovementUtil.getActionMovementSpeed(player) * speedMod;
 		Vec3 vec = VectorUtil.fromYawDegree(player.yBodyRot).scale(modifier);
 		switch (direction) {
 			case Back:

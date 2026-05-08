@@ -12,14 +12,13 @@ import com.alrex.parcool.common.attachment.common.Parkourability;
 import com.alrex.parcool.compat.SableCompat;
 import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.config.ParCoolConfig;
+import com.alrex.parcool.utilities.MovementUtil;
 import com.alrex.parcool.utilities.WorldUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Pose;
-import net.minecraft.world.entity.ai.attributes.AttributeInstance;
-import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.RenderShape;
@@ -103,8 +102,11 @@ public class Slide extends Action {
 	public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
 		if (slidingVec == null) return;
 
-        AttributeInstance attr = player.getAttribute(Attributes.MOVEMENT_SPEED);
-        double baseSpeed = attr != null ? attr.getValue() * 4.5 : 0.45;
+        double speedMod = Math.min(
+                parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Doubles.SlideSpeedModifier),
+                parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxSlideSpeedModifier)
+        );
+        double baseSpeed = MovementUtil.getActionMovementSpeed(player) * speedMod;
 
         // Sub-level integration is narrow: slope + Y-displacement for moving sub-levels.
         // Motion itself stays in world-XZ because the player is world-gravity-bound.

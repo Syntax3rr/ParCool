@@ -429,6 +429,30 @@ public class ParCoolConfig {
 			DamageReductionRateBreakfall(
 					ConfigGroup.Control, "Damage reduction rate of Breakfall",
 					"max_breakfall_damage_reduction_rate", Server.Doubles.MaxDamageReductionRateBreakfall
+			),
+			HWallRunSpeedModifier(
+					ConfigGroup.Modifier, "Horizontal WallRun speed (multiplier on MOVEMENT_SPEED attribute)",
+					"h-wall-run_speed", 4.0, Server.Doubles.MaxHWallRunSpeedModifier.Min, Server.Doubles.MaxHWallRunSpeedModifier.Max
+			),
+			WallJumpSpeedModifier(
+					ConfigGroup.Modifier, "WallJump speed (multiplier on MOVEMENT_SPEED attribute)",
+					"wall-jump_speed", 5.9, Server.Doubles.MaxWallJumpSpeedModifier.Min, Server.Doubles.MaxWallJumpSpeedModifier.Max
+			),
+			SlideSpeedModifier(
+					ConfigGroup.Modifier, "Slide speed (multiplier on MOVEMENT_SPEED attribute)",
+					"slide_speed", 4.5, Server.Doubles.MaxSlideSpeedModifier.Min, Server.Doubles.MaxSlideSpeedModifier.Max
+			),
+			RollSpeedModifier(
+					ConfigGroup.Modifier, "Roll speed (multiplier on MOVEMENT_SPEED attribute)",
+					"roll_speed", 10.0, Server.Doubles.MaxRollSpeedModifier.Min, Server.Doubles.MaxRollSpeedModifier.Max
+			),
+			HangDownSpeedModifier(
+					ConfigGroup.Modifier, "HangDown traversal speed (multiplier on MOVEMENT_SPEED attribute)",
+					"hang-down_speed", 1.0, Server.Doubles.MaxHangDownSpeedModifier.Min, Server.Doubles.MaxHangDownSpeedModifier.Max
+			),
+			ClingToCliffSpeedModifier(
+					ConfigGroup.Modifier, "ClingToCliff traversal speed (multiplier on MOVEMENT_SPEED attribute)",
+					"cling-to-cliff_speed", 1.0, Server.Doubles.MaxClingToCliffSpeedModifier.Min, Server.Doubles.MaxClingToCliffSpeedModifier.Max
 			);
 			public final ConfigGroup Group;
 			@Nullable
@@ -840,6 +864,30 @@ public class ParCoolConfig {
 			MaxDamageReductionRateBreakfall(
 					ConfigGroup.Control, "Damage reduction rate of Breakfall",
 					"max_breakfall_damage_reduction_rate", 0.6, 0, 1, AdvantageousDirection.Higher
+			),
+			MaxHWallRunSpeedModifier(
+					ConfigGroup.Modifier, "Max Horizontal WallRun speed (multiplier on MOVEMENT_SPEED attribute)",
+					"max_h-wall-run_speed", 3.0, 0.5, 10.0, AdvantageousDirection.Higher
+			),
+			MaxWallJumpSpeedModifier(
+					ConfigGroup.Modifier, "Max WallJump speed (multiplier on MOVEMENT_SPEED attribute)",
+					"max_wall-jump_speed", 4.9, 1.0, 15.0, AdvantageousDirection.Higher
+			),
+			MaxSlideSpeedModifier(
+					ConfigGroup.Modifier, "Max Slide speed (multiplier on MOVEMENT_SPEED attribute)",
+					"max_slide_speed", 4.5, 0.5, 15.0, AdvantageousDirection.Higher
+			),
+			MaxRollSpeedModifier(
+					ConfigGroup.Modifier, "Max Roll speed (multiplier on MOVEMENT_SPEED attribute)",
+					"max_roll_speed", 10.0, 1.0, 20.0, AdvantageousDirection.Higher
+			),
+			MaxHangDownSpeedModifier(
+					ConfigGroup.Modifier, "Max HangDown traversal speed (multiplier on MOVEMENT_SPEED attribute)",
+					"max_hang-down_speed", 1.0, 0.1, 5.0, AdvantageousDirection.Higher
+			),
+			MaxClingToCliffSpeedModifier(
+					ConfigGroup.Modifier, "Max ClingToCliff traversal speed (multiplier on MOVEMENT_SPEED attribute)",
+					"max_cling-to-cliff_speed", 1.0, 0.1, 5.0, AdvantageousDirection.Higher
 			);
 			public final ConfigGroup Group;
 			@Nullable

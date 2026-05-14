@@ -17,7 +17,7 @@ public class AdditionalProperties {
     private int inWaterTick = 0;
     private int notInWaterTick = 0;
 	private int tickAfterLastJump = 0;
-	private int actualNotLandingTick = 0;
+	private int actualNotLandingTick = Integer.MAX_VALUE;
 	private boolean inAirByJumping = false;
 
 	public void onJump() {
@@ -29,7 +29,7 @@ public class AdditionalProperties {
 		if (player.onGround) {
 			inAirByJumping = false;
 			actualNotLandingTick = 0;
-		} else {
+		} else if (actualNotLandingTick < Integer.MAX_VALUE) {
 			actualNotLandingTick++;
 		}
 		tickAfterLastJump++;

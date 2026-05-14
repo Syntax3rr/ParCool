@@ -119,8 +119,8 @@ public class HangDown extends Action {
 		);
 		final double speed = MovementUtil.getActionMovementSpeed(player) * speedMod;
 		double xSpeed = 0, zSpeed = 0;
-		// Sable in-plane motion is already applied by floor tracking; only compose the
-		// localY (gravity-axis) component here to avoid double-counting.
+		// Floor tracking handles in-plane sub-level motion; only the localY component
+		// is composed here to avoid double-counting.
 		SableLocalFrame frame = SableLocalFrame.at(player, 0.5);
 		Vec3 baseDelta = frame.localY().scale(frame.verticalComponent(frame.displacement()));
 		if (orthogonalToBar) {

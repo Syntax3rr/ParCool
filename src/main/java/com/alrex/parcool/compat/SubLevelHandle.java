@@ -1,8 +1,8 @@
 package com.alrex.parcool.compat;
 
-// Opaque handle to a specific Sable sub-level.  The underlying SubLevelAccess is stored as
-// Object so this class's signature is Sable-class-free — vanilla-only builds can reference
-// SubLevelHandle without triggering Sable classloading.  Only SableCompatImpl unpacks it.
+// Opaque handle to a Sable sub-level. The Sable type is held as Object so vanilla-only
+// builds can reference SubLevelHandle without classloading Sable. Only SableCompatImpl
+// unpacks the underlying SubLevelAccess.
 public final class SubLevelHandle {
     final Object sla;
 

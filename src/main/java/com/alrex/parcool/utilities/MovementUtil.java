@@ -12,10 +12,9 @@ public final class MovementUtil {
 
     private static final ResourceLocation VANILLA_SPRINT_ID = ResourceLocation.withDefaultNamespace("sprinting");
 
-    // Player MOVEMENT_SPEED with sprint and FastRun stripped, so parkour actions
+    // MOVEMENT_SPEED with sprint and FastRun stripped out: parkour actions still
     // scale with persistent buffs (potions, armor, curios) but don't compound the
-    // boost the player is already getting from sprinting or FastRun.  Mirrors
-    // vanilla AttributeInstance#calculateValue otherwise.
+    // sprint/FastRun boost on top. Mirrors AttributeInstance#calculateValue otherwise.
     public static double getActionMovementSpeed(Player player) {
         AttributeInstance attr = player.getAttribute(Attributes.MOVEMENT_SPEED);
         if (attr == null) return 0.1;

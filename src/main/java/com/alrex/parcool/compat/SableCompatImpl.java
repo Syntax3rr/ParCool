@@ -28,7 +28,7 @@ class SableCompatImpl {
         return ((SubLevelAccess) handle.sla).logicalPose().transformPositionInverse(worldPos);
     }
 
-    // pose(dir) - pose(0) drops translation, leaving the rotation-only transform.
+    // pose(dir) - pose(0) cancels the translation, leaving rotation only.
     static Vec3 localDirectionToWorld(SubLevelHandle handle, Vec3 localDir) {
         Pose3dc pose = ((SubLevelAccess) handle.sla).logicalPose();
         Vec3 origin = pose.transformPosition(Vec3.ZERO);
@@ -66,12 +66,10 @@ class SableCompatImpl {
         return null;
     }
 
-    // Floor lookup that respects arbitrary sub-level rotation.  The player is always
-    // world-vertical, so the contact direction is world -Y regardless of how the
-    // sub-level is oriented.  We step down in world space, transform each probe point
-    // into the sub-level's local frame, and read the block there — this is correct
-    // even when local Y points sideways or upside-down in world space.  Multiple
-    // depths absorb the small collision-tolerance gap between foot and surface.
+    // Floor lookup that survives arbitrary sub-level rotation. Steps down in world
+    // space (the player is always world-vertical) and transforms each probe into
+    // the sub-level's frame, so it still works when local Y points sideways or down.
+    // Multiple depths cover the small collision-tolerance gap between foot and floor.
     @Nullable
     static BlockState getSubLevelFloorBlockState(Level level, Vec3 worldFootPos) {
         AABB probeAabb = new AABB(worldFootPos.x - 0.05, worldFootPos.y - 0.6, worldFootPos.z - 0.05,
@@ -134,7 +132,8 @@ class SableCompatImpl {
         return pos;
     }
 
-    // One scan to build axes + displacement, instead of three separate lookups per tick.
+    // Single sub-level scan for axes + displacement; the per-call alternative does
+    // three separate lookups per tick.
     @Nullable
     static SableLocalFrame buildFrameAt(Level level, AABB searchAABB, Vec3 pos) {
         BoundingBox3d box = new BoundingBox3d(searchAABB);
@@ -150,8 +149,8 @@ class SableCompatImpl {
         return null;
     }
 
-    // Recover the columns of R (local axes in world space) by finite-differencing
-    // transformPositionInverse, which applies R'.
+    // Sable exposes only transformPositionInverse (R'), so we finite-difference it
+    // to recover R's columns (the local axes expressed in world space).
     private static Vec3[] computeLocalAxesInWorld(Pose3dc pose, Vec3 worldPos) {
         final double eps = 0.1;
         Vec3 base = pose.transformPositionInverse(worldPos);

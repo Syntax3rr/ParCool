@@ -68,11 +68,14 @@ public class ClingToCliff extends Action {
 	@OnlyIn(Dist.CLIENT)
 	@Override
 	public boolean canContinue(Player player, Parkourability parkourability) {
+		// Re-probe along the stored wall direction so looking around doesn't drop the cling.
+		Vec3 probeDir = clingWallDirection != null ? clingWallDirection : player.getLookAngle().multiply(1, 0, 1);
+		if (probeDir.lengthSqr() < 1e-6) return false;
 		return (parkourability.getActionInfo().can(ClingToCliff.class)
                 && isGrabbing()
 				&& !parkourability.get(HorizontalWallRun.class).isDoing()
 				&& !parkourability.get(ClimbUp.class).isDoing()
-				&& WorldUtil.getGrabbableWall(player) != null
+				&& WorldUtil.getGrabbableWallInDirection(player, probeDir.normalize()) != null
 		);
 
     }
@@ -119,17 +122,15 @@ public class ClingToCliff extends Action {
 	@Override
 	public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
-        // Player is world-vertical, so gravity neutralization is along world-Y; only the
-        // sub-level's world-vertical motion needs to be carried for moving platforms.
+        // Gravity is along world-Y, so only carry sub-level Y motion for moving platforms.
         SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.5 + 0.5);
         Vec3 baseDelta = new Vec3(0, frame.displacement().y, 0);
         if (KeyBindings.isLeftAndRightDown()) {
 			player.setDeltaMovement(baseDelta);
 		} else {
 			if (clingWallDirection != null && facingDirection == FacingDirection.ToWall) {
-				// Use the sub-level's "up" axis re-signed so it points world-upward, so
-				// traversal still follows tilted decks but doesn't flip on upside-down
-				// or sideways orientations.
+				// uprightAxis is the sub-level's "up" re-signed to point world-up: traversal
+				// follows tilted decks without flipping on sideways/upside-down ones.
 				Vec3 traversal = frame.uprightAxis().cross(clingWallDirection.normalize()).normalize();
 				double speedMod = Math.min(
 						parkourability.getActionInfo().getClientSetting().get(ParCoolConfig.Client.Doubles.ClingToCliffSpeedModifier),
@@ -147,7 +148,11 @@ public class ClingToCliff extends Action {
 
 	@Override
 	public void onWorkingTickInClient(Player player, Parkourability parkourability) {
-		clingWallDirection = WorldUtil.getGrabbableWall(player);
+		// Re-probe along the stored wall so the player can look around without dropping
+		// the cling. Only the first tick (before clingWallDirection is set) uses look.
+		Vec3 probeDir = clingWallDirection != null ? clingWallDirection : player.getLookAngle().multiply(1, 0, 1);
+		if (probeDir.lengthSqr() < 1e-6) return;
+		clingWallDirection = WorldUtil.getGrabbableWallInDirection(player, probeDir.normalize());
 		if (clingWallDirection == null) return;
 		clingWallDirection = clingWallDirection.normalize();
 		Vec3 lookingAngle = player.getLookAngle().multiply(1, 0, 1).normalize();

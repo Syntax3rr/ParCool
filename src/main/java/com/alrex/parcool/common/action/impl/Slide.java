@@ -33,19 +33,17 @@ import java.nio.ByteBuffer;
 public class Slide extends Action {
     private static final BehaviorEnforcer.ID ID_JUMP_CANCEL = BehaviorEnforcer.newID();
 
-    // How much slope (rise/run) accelerates or decelerates the slide per tick.
-    // Combined with slipperiness so steep ice slides accelerate and sticky dirt hills stop you fast.
+    // Slope contribution per tick (rise/run). Modulated by slipperiness, so ice
+    // slopes pull hard and dirt slopes barely register.
     private static final double SLOPE_ACCEL = 0.06;
-    // Base friction multiplier: actual friction-per-tick = (1 - slipperiness) * BASE_FRICTION.
-    // Calibrated so a normal-block flat slide lasts roughly maxSlidingTick ticks.
+    // Friction per tick = (1 - slipperiness) * BASE_FRICTION. Tuned so a flat
+    // normal-block slide lasts about maxSlidingTick ticks before stopping.
     private static final double BASE_FRICTION = 0.15;
     private static final double MAX_SLIDE_SPEED = 2.5;
-    // Below this, the slide is considered spent.
     private static final double STOP_SLIDE_SPEED = 0.08;
 
 	private Vec3 slidingVec = null;
-    // Speed multiplier: starts at 1.0, modified each tick by friction and slope.
-    // Only meaningful on the local client.
+    // Local-client only; remote clients animate from slidingVec alone.
     private double slideSpeed = 1.0;
 
 	@Override
@@ -75,10 +73,9 @@ public class Slide extends Action {
         return canSustainSlide(player);
 	}
 
-    // Past the tick cap, the slide is allowed to continue when the terrain itself
-    // could sustain a slide — magnitude of slope, not signed by current direction.
-    // This lets an uphill traverse ride out, decay to zero, reverse via the existing
-    // mechanism in onWorkingTickInLocalClient, and accelerate back down the same hill.
+    // Past the tick cap, keep going as long as the terrain itself can sustain a slide.
+    // Uses |slope| so an uphill traverse decays to zero, reverses, then accelerates
+    // back down the hill instead of getting cut off mid-momentum.
     private boolean canSustainSlide(Player player) {
         if (slidingVec == null) return false;
         SableLocalFrame frame = SableLocalFrame.at(player, 0.5);
@@ -92,9 +89,8 @@ public class Slide extends Action {
         return slopeGain >= frictionLoss;
     }
 
-    // Reads slipperiness of the block underfoot.  On a Sable sub-level we have to
-    // probe in the sub-level's local frame — a world-Y "below" lookup lands in air
-    // once the sub-level is rotated, which silently makes ice feel like grass.
+    // On a rotated sub-level, a world-Y "below" lookup lands in air and silently
+    // turns ice into grass. Probe in the sub-level's local frame to avoid that.
     private static float getFloorSlipperiness(Player player, SableLocalFrame frame) {
         BlockPos belowPos = player.blockPosition().below();
         if (frame.isSubLevel()) {
@@ -141,30 +137,26 @@ public class Slide extends Action {
         );
         double baseSpeed = MovementUtil.getActionMovementSpeed(player) * speedMod;
 
-        // Sub-level integration is narrow: slope + Y-displacement for moving sub-levels.
-        // Motion itself stays in world-XZ because the player is world-gravity-bound.
+        // Player is gravity-bound to world, so motion stays in world-XZ. The
+        // sub-level only contributes slope and Y-drift for moving platforms.
         SableLocalFrame frame = SableLocalFrame.at(player, 0.5);
         Vec3 effectiveSlideVec = slidingVec;
         double slope = frame.isSubLevel()
                 ? SableCompat.getSubLevelSlopeInDirection(player.level(), player.position(), effectiveSlideVec)
                 : getTerrainSlope(player, effectiveSlideVec);
 
-        // Slipperiness of the block underfoot (sable-aware so rotated sub-levels read correctly).
         float slipperiness = getFloorSlipperiness(player, frame);
 
-        // Friction: decay proportional to (1 - slipperiness), modulated by cos(slope angle)
-        // so the normal force shrinks on steep ground, matching how kinetic friction scales.
+        // Friction scales with cos(slope) so normal force shrinks on steep ground,
+        // matching how kinetic friction works.
         double slopeCos = 1.0 / Math.sqrt(1.0 + slope * slope);
         slideSpeed *= 1.0 - (1.0 - slipperiness) * BASE_FRICTION * slopeCos;
-        // Slope contribution: combines slope steepness with slipperiness so steep ice gives the
-        // strongest effect; gentle grass slopes barely register.
         slideSpeed -= slope * slipperiness * SLOPE_ACCEL;
 
-        // Reversal: slope + slipperiness overcame the remaining momentum.
         if (slideSpeed < 0) {
             slidingVec = slidingVec.reverse();
             effectiveSlideVec = effectiveSlideVec.reverse();
-            // Start the reversed slide at a modest speed to avoid immediate re-reversal.
+            // Cap the reversed speed so we don't immediately re-reverse.
             slideSpeed = Math.min(-slideSpeed, 0.4);
         }
 
@@ -173,8 +165,7 @@ public class Slide extends Action {
         if (slideSpeed < STOP_SLIDE_SPEED) return;
 
         Vec3 vec = effectiveSlideVec.scale(baseSpeed * slideSpeed).scale(player.onGround() ? 1.0 : 0.6);
-        // Only Y-displacement is added — Sable floor tracking handles in-plane co-movement,
-        // so adding full displacement would double-count.
+        // In-plane sub-level motion is handled by Sable floor tracking; only carry Y here.
         Vec3 current = player.getDeltaMovement();
         player.setDeltaMovement(vec.x(), current.y() + frame.displacement().y(), vec.z());
 	}
@@ -218,8 +209,7 @@ public class Slide extends Action {
 		return StaminaConsumeTiming.None;
 	}
 
-    // Approximates rise/run slope along dir by comparing ground-surface Y at the current
-    // position and half a block ahead.  Returns 0 when not on ground.
+    // Rise/run along dir, sampled half a block ahead. 0 when airborne.
     private double getTerrainSlope(Player player, Vec3 dir) {
         if (!player.onGround()) return 0.0;
         Level level = player.level();
@@ -230,7 +220,6 @@ public class Slide extends Action {
         return (y1 - y0) * 2.0; // normalise to per-unit-horizontal
     }
 
-    // Returns the Y coordinate of the top surface of the first non-air block at or below pos.
     private static double groundSurfaceY(Level level, Vec3 pos) {
         for (int dy = 0; dy <= 2; dy++) {
             BlockPos bp = BlockPos.containing(pos.x(), pos.y() - 0.1 - dy, pos.z());

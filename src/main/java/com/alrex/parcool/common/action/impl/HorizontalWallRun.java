@@ -42,9 +42,9 @@ public class HorizontalWallRun extends Action {
         Integer value = info.getClientSetting().get(ParCoolConfig.Client.Integers.WallRunContinuableTick);
         if (value == null) value = ParCoolConfig.Client.Integers.WallRunContinuableTick.DefaultValue;
         int base = Math.min(value, info.getServerLimitation().get(ParCoolConfig.Server.Integers.MaxWallRunContinuableTick));
-        // Scale ticks with the wall's upward facing: wallY < 0 means the player→wall vector
-        // points downward, i.e. the surface normal points more upward — a wall tilted away
-        // from the player (steep ramp). These are easier to maintain so they get more time.
+        // Walls tilted away from the player (steep ramps) are easier to run along,
+        // so give them more time. wallY < 0 means the player->wall vector points down,
+        // i.e. the surface normal points more upward.
         if (runningWallDirection != null) {
             double wallY = runningWallDirection.normalize().y();
             if (wallY < 0) base = (int) Math.min(base * 3.0, base * (1.0 - wallY * 4.0));
@@ -66,13 +66,13 @@ public class HorizontalWallRun extends Action {
     public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
 		if (runningWallDirection == null) return;
 		if (runningDirection == null) return;
-		// Re-derive each tick so a rotating sub-level tracks correctly.
+		// Re-derive each tick so we keep tracking a rotating sub-level.
 		Vec3 newWall = WorldUtil.getRunnableWall(player, player.getBbWidth() * 0.65f);
 		if (newWall != null) {
 			runningWallDirection = newWall;
 			Vec3 perpRaw = newWall.normalize().yRot((float) (Math.PI / 2));
 			Vec3 perp3d = new Vec3(perpRaw.x(), 0, perpRaw.z()).normalize();
-			// Don't flip run direction on small wall rotations.
+			// Keep the same handedness across small wall rotations.
 			runningDirection = perp3d.dot(runningDirection) >= 0 ? perp3d : perp3d.reverse();
 		}
 		Vec3 lookVec = VectorUtil.fromYawDegree(player.yBodyRot);
@@ -84,9 +84,9 @@ public class HorizontalWallRun extends Action {
 		);
 		bodyYaw = (float) VectorUtil.toYawDegree(lookVec.yRot((float) (differenceAngle / 10)));
 		Vec3 movement = player.getDeltaMovement();
-		// Project wall to horizontal for the friction probe — a tilted wall's full 3D
-		// vector has a shortened horizontal component, so scaling it directly lands
-		// the block lookup inside the player instead of on the wall.
+		// Friction probe uses the horizontal projection. A tilted wall's 3D vector
+		// has a shortened horizontal, so scaling it directly would land inside the
+		// player instead of on the wall.
 		Vec3 wallHoriz = new Vec3(runningWallDirection.x(), 0, runningWallDirection.z());
 		if (wallHoriz.lengthSqr() < 1e-4) return;
 		Vec3 wallProbe = wallHoriz.normalize().scale(player.getBbWidth() * 0.5 + 0.1);
@@ -99,11 +99,9 @@ public class HorizontalWallRun extends Action {
                     parkourability.getActionInfo().getServerLimitation().get(ParCoolConfig.Server.Doubles.MaxHWallRunSpeedModifier)
             );
             double speedScale = MovementUtil.getActionMovementSpeed(player) * speedMod;
-            // Player is world-vertical: run direction is world-horizontal, "up" is world-Y,
-            // and we still pick up the sub-level's world-vertical drift for moving platforms.
-            // Clamp preserved Y velocity to ≤ 0: a leaned-back wall pushes the player up
-            // via collision, and feeding that back into decayedUp would runaway-accelerate
-            // them up the wall.  Only downward (gravity-dragged) Y is kept.
+            // Run lives in world-XZ; we still pick up sub-level Y drift for moving platforms.
+            // Clamp preserved Y to <= 0 so a leaned-back wall's collision push doesn't
+            // feed back into decayedUp and accelerate the player up the wall.
             SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
             Vec3 runHoriz = new Vec3(runningDirection.x() * speedScale, 0, runningDirection.z() * speedScale);
             double decayedUp = Math.min(movement.y, 0) * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo());
@@ -134,9 +132,8 @@ public class HorizontalWallRun extends Action {
 		if (runDirection.dot(lookDirection) < 0) {
 			runDirection = runDirection.reverse();
 		}
-		// A wall tilted away from the player (steep-ramp-like) gives runDirection a downward
-		// Y component; allow these so the bonus-duration scaling can apply.  Cut off only
-		// the truly floor-like cases where the surface stops being a wall.
+		// Allow downward-Y runDirection from leaned-back ramps (the bonus-duration
+		// scaling needs them); only reject when the surface is basically a floor.
 		if (runDirection.y() < -0.85) return false;
 		runDirection = new Vec3(runDirection.x(), 0, runDirection.z()).normalize();
 		startInfo.putDouble(wallDirection.x())
@@ -173,7 +170,7 @@ public class HorizontalWallRun extends Action {
 		if (!(player instanceof LocalPlayer localPlayer)) return false;
 		if (localPlayer.input == null) return false;
 		var moveVector = localPlayer.input.getMoveVector();
-		// Use body yaw so input direction doesn't depend on where the player is looking.
+		// Rotate by body yaw so the input direction is decoupled from look direction.
 		var actualInputVector
 				= new Vec3(moveVector.x, 0, moveVector.y)
 				.normalize()

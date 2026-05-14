@@ -3,9 +3,9 @@ package com.alrex.parcool.compat;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 
-// World-space basis and per-tick displacement of the Sable sub-level under the entity.
-// WORLD is the identity frame, returned when Sable isn't loaded or no sub-level is found,
-// so call sites can use it unconditionally.
+// World-space basis and per-tick displacement of the sub-level under an entity.
+// WORLD is the identity frame; returned when Sable isn't loaded or no sub-level
+// is found, so call sites can use the result unconditionally.
 public record SableLocalFrame(
         Vec3 localX, Vec3 localY, Vec3 localZ,
         Vec3 displacement,
@@ -33,9 +33,8 @@ public record SableLocalFrame(
         return delta.add(displacement);
     }
 
-    // World-up expressed in the local basis has coefficients (localX·up, localY·up,
-    // localZ·up); the largest |coefficient| names the local axis closest to world-up,
-    // and its sign tells us how to flip that axis so it actually points world-upward.
+    // Local axis closest to world-up. Picks the axis with the largest |dot(worldUp)|
+    // and flips it if needed so the result really does point upward.
     public Vec3 uprightAxis() {
         final Vec3 worldUp = new Vec3(0, 1, 0);
         double px = localX.dot(worldUp);

@@ -152,7 +152,7 @@ public class WallJump extends Action {
 			type = WallJumpAnimationType.SwingLeftArm;
 		}
 
-        // Player is world-vertical: up-boost is world-up regardless of sub-level orientation.
+        // Up-boost is along world-Y; sub-level orientation doesn't matter here.
         double lookAngleY = player.getLookAngle().normalize().y();
         if (lookAngleY > 0.5) {
             jumpDirection = jumpDirection.add(0, lookAngleY * 2, 0).normalize();
@@ -198,8 +198,8 @@ public class WallJump extends Action {
 				WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
 				: 0.6f;
 
-		// Player is world-vertical, so split into world-XZ and world-Y; ride the
-		// sub-level's per-tick translation via applyDisplacement.
+		// Player motion is world-aligned; applyDisplacement adds the sub-level's
+		// per-tick translation so we ride moving platforms.
 		SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
 		double motionUp = motion.y;
 		double jumpUp = jumpMotion.y;

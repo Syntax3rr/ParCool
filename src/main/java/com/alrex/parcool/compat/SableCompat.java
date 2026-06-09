@@ -18,11 +18,13 @@ public class SableCompat {
     }
 
     public static boolean hasSubLevelCollision(Level level, AABB aabb) {
+        if (!LOADED) return false;
         return SableCompatImpl.hasSubLevelCollision(level, aabb);
     }
 
     @Nullable
     public static BlockState getSubLevelBlockState(Level level, BlockPos pos) {
+        if (!LOADED) return null;
         return SableCompatImpl.getSubLevelBlockState(level, pos);
     }
 

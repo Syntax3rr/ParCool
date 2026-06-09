@@ -153,12 +153,14 @@ public class WallJump extends Action {
 		}
 
         // Up-boost is along world-Y; sub-level orientation doesn't matter here.
+        // Base bias of 1.6 gives a ~58° launch (steeper than 45°) so the jump pops up
+        // more and travels less forward; looking up adds extra height on top of that.
         double lookAngleY = player.getLookAngle().normalize().y();
+        double verticalBias = 1.6;
         if (lookAngleY > 0.5) {
-            jumpDirection = jumpDirection.add(0, lookAngleY * 2, 0).normalize();
-        } else {
-            jumpDirection = jumpDirection.add(0, 1, 0).normalize();
+            verticalBias += (lookAngleY - 0.5) * 2.0;
         }
+        jumpDirection = jumpDirection.add(0, verticalBias, 0).normalize();
 		startInfo
 				.putDouble(jumpDirection.x())
                 .putDouble(jumpDirection.y())
@@ -210,7 +212,12 @@ public class WallJump extends Action {
 			newUp = motionUp > jumpUp ? motionUp + jumpUp : jumpUp;
 			spawnJumpParticles(player, wallDirection, jumpDirection);
 		}
-		Vec3 horiz = new Vec3(motion.x + jumpMotion.x, 0, motion.z + jumpMotion.z);
+		Vec3 momentum = new Vec3(motion.x, 0, motion.z);
+		double momentumCap = MovementUtil.getActionMovementSpeed(player);
+		if (momentum.lengthSqr() > momentumCap * momentumCap) {
+			momentum = momentum.normalize().scale(momentumCap);
+		}
+		Vec3 horiz = momentum.add(jumpMotion.x, 0, jumpMotion.z);
 		player.setDeltaMovement(frame.applyDisplacement(horiz.add(0, newUp, 0)));
 
 		WallJumpAnimationType type = WallJumpAnimationType.fromCode(startData.get());

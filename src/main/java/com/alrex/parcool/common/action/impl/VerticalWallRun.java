@@ -1,6 +1,7 @@
 package com.alrex.parcool.common.action.impl;
 
 import com.alrex.parcool.api.SoundEvents;
+import com.alrex.parcool.compat.SableCompat;
 import com.alrex.parcool.client.animation.impl.VerticalWallRunAnimator;
 import com.alrex.parcool.client.input.KeyBindings;
 import com.alrex.parcool.common.action.Action;
@@ -54,19 +55,15 @@ public class VerticalWallRun extends Action {
 				&& parkourability.getAdditionalProperties().getLastSprintingTick() > 12
 				&& lookVec.y() > 0;
 		if (able) {
-			Vec3 wall = WorldUtil.getWall(player);
+			Vec3 wall = WorldUtil.getWallInFacing(player, player.getBbWidth() * 0.65);
 			if (wall == null) return false;
 			wall = wall.normalize();
 			if (wall.dot(VectorUtil.fromYawDegree(player.getYHeadRot())) > 0.93) {
 				double height = WorldUtil.getWallHeight(player, wall, player.getBbHeight() * 2.2, 0.2);
                 if (height > player.getBbHeight() * 1.3) {
-					BlockPos targetBlock = new BlockPos(
-							Mth.floor(player.getX() + wall.x()),
-							Mth.floor(player.getBoundingBox().minY + player.getBbHeight() * 0.5),
-							Mth.floor(player.getZ() + wall.z())
-					);
+					BlockPos targetBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wall, 0.5);
 					if (!player.getCommandSenderWorld().isLoaded(targetBlock)) return false;
-					float slipperiness = player.getCommandSenderWorld().getBlockState(targetBlock).getFriction(player.getCommandSenderWorld(), targetBlock, player);
+					float slipperiness = WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), targetBlock).getFriction(player.getCommandSenderWorld(), targetBlock, player);
 					startInfo.putDouble(height);
 					startInfo.putFloat(slipperiness);
 					startInfo.putDouble(wall.x());
@@ -81,7 +78,7 @@ public class VerticalWallRun extends Action {
 
 	@Override
     public boolean canContinue(Player player, Parkourability parkourability) {
-		Vec3 wall = WorldUtil.getWall(player);
+		Vec3 wall = WorldUtil.getWallInFacing(player, player.getBbWidth() * 0.75);
 		if (wall == null) return false;
 		wall = wall.normalize();
 		return (wall.dot(VectorUtil.fromYawDegree(player.getYHeadRot())) > 0.93
@@ -123,6 +120,12 @@ public class VerticalWallRun extends Action {
 		}
 	}
 
+    @OnlyIn(Dist.CLIENT)
+    @Override
+    public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
+        SableCompat.applySubLevelTracking(player, player.getBbWidth() * 0.65 + 0.5);
+    }
+
     @Override
     public void onWorkingTickInClient(Player player, Parkourability parkourability) {
         spawnRunningParticle(player);
@@ -139,11 +142,7 @@ public class VerticalWallRun extends Action {
 		if (wallDirection == null) return;
 		Level level = player.level();
 		Vec3 pos = player.position();
-        BlockPos leanedBlock = new BlockPos(
-				Mth.floor(pos.x() + wallDirection.x()),
-				Mth.floor(pos.y() + player.getBbHeight() * 0.25),
-				Mth.floor(pos.z() + wallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
 		if (!level.isLoaded(leanedBlock)) return;
 		float width = player.getBbWidth();
 		BlockState blockstate = level.getBlockState(leanedBlock);

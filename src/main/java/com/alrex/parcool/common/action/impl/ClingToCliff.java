@@ -9,6 +9,7 @@ import com.alrex.parcool.common.action.BehaviorEnforcer;
 import com.alrex.parcool.common.action.StaminaConsumeTiming;
 import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
+import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.config.ParCoolConfig;
 import com.alrex.parcool.utilities.VectorUtil;
 import com.alrex.parcool.utilities.WorldUtil;
@@ -66,11 +67,14 @@ public class ClingToCliff extends Action {
 	@OnlyIn(Dist.CLIENT)
 	@Override
 	public boolean canContinue(Player player, Parkourability parkourability) {
+		// Re-probe along the stored wall direction so looking around doesn't drop the cling.
+		Vec3 probeDir = clingWallDirection != null ? clingWallDirection : player.getLookAngle().multiply(1, 0, 1);
+		if (probeDir.lengthSqr() < 1e-6) return false;
 		return (parkourability.getActionInfo().can(ClingToCliff.class)
                 && isGrabbing()
 				&& !parkourability.get(HorizontalWallRun.class).isDoing()
 				&& !parkourability.get(ClimbUp.class).isDoing()
-				&& WorldUtil.getGrabbableWall(player) != null
+				&& WorldUtil.getGrabbableWallInDirection(player, probeDir.normalize()) != null
 		);
 
     }
@@ -117,23 +121,33 @@ public class ClingToCliff extends Action {
 	@Override
 	public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
+        // Gravity is along world-Y, so only carry sub-level Y motion for moving platforms.
+        SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.5 + 0.5);
+        Vec3 baseDelta = new Vec3(0, frame.displacement().y, 0);
         if (KeyBindings.isLeftAndRightDown()) {
-			player.setDeltaMovement(0, 0, 0);
+			player.setDeltaMovement(baseDelta);
 		} else {
 			if (clingWallDirection != null && facingDirection == FacingDirection.ToWall) {
-				Vec3 vec = clingWallDirection.yRot((float) (Math.PI / 2)).normalize().scale(0.1);
-                if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(vec);
-                else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(vec.reverse());
-				else player.setDeltaMovement(0, 0, 0);
+				// uprightAxis is the sub-level's "up" re-signed to point world-up: traversal
+				// follows tilted decks without flipping on sideways/upside-down ones.
+				Vec3 traversal = frame.uprightAxis().cross(clingWallDirection.normalize()).normalize();
+				Vec3 vec = traversal.scale(0.1);
+                if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(vec.add(baseDelta));
+                else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(vec.reverse().add(baseDelta));
+				else player.setDeltaMovement(baseDelta);
 			} else {
-				player.setDeltaMovement(0, 0, 0);
+				player.setDeltaMovement(baseDelta);
 			}
 		}
 	}
 
 	@Override
 	public void onWorkingTickInClient(Player player, Parkourability parkourability) {
-		clingWallDirection = WorldUtil.getGrabbableWall(player);
+		// Re-probe along the stored wall so the player can look around without dropping
+		// the cling. Only the first tick (before clingWallDirection is set) uses look.
+		Vec3 probeDir = clingWallDirection != null ? clingWallDirection : player.getLookAngle().multiply(1, 0, 1);
+		if (probeDir.lengthSqr() < 1e-6) return;
+		clingWallDirection = WorldUtil.getGrabbableWallInDirection(player, probeDir.normalize());
 		if (clingWallDirection == null) return;
 		clingWallDirection = clingWallDirection.normalize();
 		Vec3 lookingAngle = player.getLookAngle().multiply(1, 0, 1).normalize();

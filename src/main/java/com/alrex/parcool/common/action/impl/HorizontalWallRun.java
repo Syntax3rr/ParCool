@@ -10,6 +10,7 @@ import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
 import com.alrex.parcool.common.info.ActionInfo;
 import com.alrex.parcool.config.ParCoolConfig;
+import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.utilities.BufferUtil;
 import com.alrex.parcool.utilities.VectorUtil;
 import com.alrex.parcool.utilities.WorldUtil;
@@ -40,7 +41,15 @@ public class HorizontalWallRun extends Action {
 	private int getMaxRunningTick(ActionInfo info) {
         Integer value = info.getClientSetting().get(ParCoolConfig.Client.Integers.WallRunContinuableTick);
         if (value == null) value = ParCoolConfig.Client.Integers.WallRunContinuableTick.DefaultValue;
-        return Math.min(value, info.getServerLimitation().get(ParCoolConfig.Server.Integers.MaxWallRunContinuableTick));
+        int base = Math.min(value, info.getServerLimitation().get(ParCoolConfig.Server.Integers.MaxWallRunContinuableTick));
+        // Walls tilted away from the player (steep ramps) are easier to run along,
+        // so give them more time. wallY < 0 means the player->wall vector points down,
+        // i.e. the surface normal points more upward.
+        if (runningWallDirection != null) {
+            double wallY = runningWallDirection.normalize().y();
+            if (wallY < 0) base = (int) Math.min(base * 3.0, base * (1.0 - wallY * 4.0));
+        }
+        return base;
 	}
 
 	private boolean wallIsRightward = false;
@@ -55,10 +64,17 @@ public class HorizontalWallRun extends Action {
 	@OnlyIn(Dist.CLIENT)
 	@Override
     public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
-		Vec3 wallDirection = WorldUtil.getRunnableWall(player, player.getBbWidth() * 0.65f);
-		if (wallDirection == null) return;
 		if (runningWallDirection == null) return;
 		if (runningDirection == null) return;
+		// Re-derive each tick so we keep tracking a rotating sub-level.
+		Vec3 newWall = WorldUtil.getRunnableWall(player, player.getBbWidth() * 0.65f);
+		if (newWall != null) {
+			runningWallDirection = newWall;
+			Vec3 perpRaw = newWall.normalize().yRot((float) (Math.PI / 2));
+			Vec3 perp3d = new Vec3(perpRaw.x(), 0, perpRaw.z()).normalize();
+			// Keep the same handedness across small wall rotations.
+			runningDirection = perp3d.dot(runningDirection) >= 0 ? perp3d : perp3d.reverse();
+		}
 		Vec3 lookVec = VectorUtil.fromYawDegree(player.yBodyRot);
 		double differenceAngle = Math.asin(
 				new Vec3(
@@ -68,24 +84,29 @@ public class HorizontalWallRun extends Action {
 		);
 		bodyYaw = (float) VectorUtil.toYawDegree(lookVec.yRot((float) (differenceAngle / 10)));
 		Vec3 movement = player.getDeltaMovement();
-		BlockPos leanedBlock = new BlockPos(
-				Mth.floor(player.getX() + runningWallDirection.x()),
-				Mth.floor(player.getBoundingBox().minY + player.getBbHeight() * 0.5),
-				Mth.floor(player.getZ() + runningWallDirection.z())
-		);
+		// Friction probe uses the horizontal projection. A tilted wall's 3D vector
+		// has a shortened horizontal, so scaling it directly would land inside the
+		// player instead of on the wall.
+		Vec3 wallHoriz = new Vec3(runningWallDirection.x(), 0, runningWallDirection.z());
+		if (wallHoriz.lengthSqr() < 1e-4) return;
+		Vec3 wallProbe = wallHoriz.normalize().scale(player.getBbWidth() * 0.5 + 0.1);
+		BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallProbe, 0.5);
 		if (!player.getCommandSenderWorld().isLoaded(leanedBlock)) return;
-		float slipperiness = player.getCommandSenderWorld().getBlockState(leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player);
+		float slipperiness = WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player);
 		if (slipperiness <= 0.8) {
             double speedScale = 0.2;
             var attr = player.getAttribute(Attributes.MOVEMENT_SPEED);
             if (attr != null) {
                 speedScale *= attr.getValue() / attr.getBaseValue();
             }
-			player.setDeltaMovement(
-                    runningDirection.x() * speedScale,
-					movement.y() * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo()),
-                    runningDirection.z() * speedScale
-			);
+            // Run lives in world-XZ; we still pick up sub-level Y drift for moving platforms.
+            // Clamp preserved Y to <= 0 so a leaned-back wall's collision push doesn't
+            // feed back into decayedUp and accelerate the player up the wall.
+            SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
+            Vec3 runHoriz = new Vec3(runningDirection.x() * speedScale, 0, runningDirection.z() * speedScale);
+            double decayedUp = Math.min(movement.y, 0) * (slipperiness - 0.1) * ((double) getDoingTick()) / getMaxRunningTick(parkourability.getActionInfo());
+            double subUp = frame.displacement().y;
+            player.setDeltaMovement(runHoriz.add(0, decayedUp + subUp, 0));
 		}
 	}
 
@@ -103,7 +124,7 @@ public class HorizontalWallRun extends Action {
 						wallVec.x() * lookDirection.x() + wallVec.z() * lookDirection.z(), 0,
 						-wallVec.x() * lookDirection.z() + wallVec.z() * lookDirection.x()
 				).normalize();
-		if (Math.abs(dividedVec.z()) < 0.9) {
+		if (Math.abs(dividedVec.z()) < 0.8) {
 			return false;
 		}
 		BufferUtil.wrap(startInfo).putBoolean(dividedVec.z() > 0/*if true, wall is in right side*/);
@@ -111,7 +132,12 @@ public class HorizontalWallRun extends Action {
 		if (runDirection.dot(lookDirection) < 0) {
 			runDirection = runDirection.reverse();
 		}
+		// Allow downward-Y runDirection from leaned-back ramps (the bonus-duration
+		// scaling needs them); only reject when the surface is basically a floor.
+		if (runDirection.y() < -0.85) return false;
+		runDirection = new Vec3(runDirection.x(), 0, runDirection.z()).normalize();
 		startInfo.putDouble(wallDirection.x())
+				.putDouble(wallDirection.y())
 				.putDouble(wallDirection.z())
 				.putDouble(runDirection.x())
 				.putDouble(runDirection.z());
@@ -144,10 +170,11 @@ public class HorizontalWallRun extends Action {
 		if (!(player instanceof LocalPlayer localPlayer)) return false;
 		if (localPlayer.input == null) return false;
 		var moveVector = localPlayer.input.getMoveVector();
+		// Rotate by body yaw so the input direction is decoupled from look direction.
 		var actualInputVector
 				= new Vec3(moveVector.x, 0, moveVector.y)
 				.normalize()
-				.yRot((float) -Math.toRadians(player.getYRot()));
+				.yRot((float) -Math.toRadians(player.yBodyRot));
 		// Input almost opposite to wall
 		if (wallDirection.normalize().dot(actualInputVector) < -0.86) {
 			return false;
@@ -161,6 +188,7 @@ public class HorizontalWallRun extends Action {
 				&& ((ParCoolConfig.Client.getInstance().HWallRunControl.get() == ControlType.PressKey && KeyBindings.getKeyHorizontalWallRun().isDown())
 				|| ParCoolConfig.Client.getInstance().HWallRunControl.get() == ControlType.Auto)
 				&& !player.onGround()
+                && (runningWallDirection == null || runningWallDirection.normalize().y() >= -0.85)
 		);
 	}
 
@@ -172,8 +200,9 @@ public class HorizontalWallRun extends Action {
 	@Override
     public void onStartInLocalClient(Player player, Parkourability parkourability, ByteBuffer startData) {
 		wallIsRightward = BufferUtil.getBoolean(startData);
-		runningWallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
-		runningDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
+		runningWallDirection = new Vec3(startData.getDouble(), startData.getDouble(), startData.getDouble());
+		double rdX = startData.getDouble(), rdZ = startData.getDouble();
+		runningDirection = new Vec3(rdX, 0, rdZ).normalize();
 		if (ParCoolConfig.Client.Booleans.EnableActionSounds.get())
             player.playSound(SoundEvents.HORIZONTAL_WALL_RUN.get(), 1f, 1f);
 		Animation animation = Animation.get(player);
@@ -185,8 +214,9 @@ public class HorizontalWallRun extends Action {
 	@Override
 	public void onStartInOtherClient(Player player, Parkourability parkourability, ByteBuffer startData) {
 		wallIsRightward = BufferUtil.getBoolean(startData);
-		runningWallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
-		runningDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
+		runningWallDirection = new Vec3(startData.getDouble(), startData.getDouble(), startData.getDouble());
+		double rdX = startData.getDouble(), rdZ = startData.getDouble();
+		runningDirection = new Vec3(rdX, 0, rdZ).normalize();
 		Animation animation = Animation.get(player);
         if (ParCoolConfig.Client.Booleans.EnableActionSounds.get())
             player.playSound(SoundEvents.HORIZONTAL_WALL_RUN.get(), 1f, 1f);
@@ -242,14 +272,13 @@ public class HorizontalWallRun extends Action {
 		if (runningDirection == null || runningWallDirection == null) return;
 		Level level = player.level();
 		Vec3 pos = player.position();
-        BlockPos leanedBlock = new BlockPos(
-				Mth.floor(pos.x() + runningWallDirection.x()),
-				Mth.floor(pos.y() + player.getBbHeight() * 0.25),
-				Mth.floor(pos.z() + runningWallDirection.z())
-        );
+		Vec3 wallProbeHoriz = new Vec3(runningWallDirection.x(), 0, runningWallDirection.z());
+		if (wallProbeHoriz.lengthSqr() < 1e-4) return;
+		Vec3 wallProbeP = wallProbeHoriz.normalize().scale(player.getBbWidth() * 0.5 + 0.1);
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallProbeP, 0.25);
 		if (!level.isLoaded(leanedBlock)) return;
 		float width = player.getBbWidth();
-		BlockState blockstate = level.getBlockState(leanedBlock);
+		BlockState blockstate = WorldUtil.getBlockStateAt(level, leanedBlock);
 
         Vec3 wallDirection = runningWallDirection.normalize();
         Vec3 orthogonalToWallVec = wallDirection.yRot((float) (Math.PI / 2));

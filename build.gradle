@@ -84,8 +84,12 @@ configurations {
 
 repositories {
     maven { url = 'https://maven.blamejared.com' }
+    maven { url = 'https://maven.ryanhcode.dev/releases' }
 }
 dependencies {
+    compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0"
+    compileOnly "dev.ryanhcode.sable:sable-neoforge-1.21.1:2.0.3"
+
     runtimeOnly "vazkii.patchouli:Patchouli:${patchouli_version}"
     compileOnly "vazkii.patchouli:Patchouli:${patchouli_version}"
 

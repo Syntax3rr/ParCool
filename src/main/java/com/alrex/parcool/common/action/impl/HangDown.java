@@ -1,6 +1,7 @@
 package com.alrex.parcool.common.action.impl;
 
 import com.alrex.parcool.api.SoundEvents;
+import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.client.animation.impl.HangAnimator;
 import com.alrex.parcool.client.input.KeyBindings;
 import com.alrex.parcool.common.action.Action;
@@ -113,24 +114,28 @@ public class HangDown extends Action {
 		Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot);
 		final double speed = 0.1;
 		double xSpeed = 0, zSpeed = 0;
+		// Floor tracking handles in-plane sub-level motion; only the localY component
+		// is composed here to avoid double-counting.
+		SableLocalFrame frame = SableLocalFrame.at(player, 0.5);
+		Vec3 baseDelta = frame.localY().scale(frame.verticalComponent(frame.displacement()));
 		if (orthogonalToBar) {
 			if (hangingBarAxis == BarAxis.X) {
 				xSpeed = (bodyVec.z > 0 ? 1 : -1) * speed;
 			} else {
 				zSpeed = (bodyVec.x > 0 ? 1 : -1) * speed;
 			}
-            if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(xSpeed, 0, -zSpeed);
-            else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(-xSpeed, 0, zSpeed);
-			else player.setDeltaMovement(0, 0, 0);
+            if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(new Vec3(xSpeed, 0, -zSpeed).add(baseDelta));
+            else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(new Vec3(-xSpeed, 0, zSpeed).add(baseDelta));
+			else player.setDeltaMovement(baseDelta);
 		} else {
 			if (hangingBarAxis == BarAxis.X) {
 				xSpeed = (bodyVec.x > 0 ? 1 : -1) * speed;
 			} else {
 				zSpeed = (bodyVec.z > 0 ? 1 : -1) * speed;
 			}
-            if (KeyBindings.isKeyForwardDown()) player.setDeltaMovement(xSpeed, 0, zSpeed);
-            else if (KeyBindings.isKeyBackDown()) player.setDeltaMovement(-xSpeed, 0, -zSpeed);
-			else player.setDeltaMovement(0, 0, 0);
+            if (KeyBindings.isKeyForwardDown()) player.setDeltaMovement(new Vec3(xSpeed, 0, zSpeed).add(baseDelta));
+            else if (KeyBindings.isKeyBackDown()) player.setDeltaMovement(new Vec3(-xSpeed, 0, -zSpeed).add(baseDelta));
+			else player.setDeltaMovement(baseDelta);
 		}
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
 	}

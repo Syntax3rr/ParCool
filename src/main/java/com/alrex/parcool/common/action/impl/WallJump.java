@@ -9,6 +9,7 @@ import com.alrex.parcool.common.action.BehaviorEnforcer;
 import com.alrex.parcool.common.action.StaminaConsumeTiming;
 import com.alrex.parcool.common.attachment.client.Animation;
 import com.alrex.parcool.common.attachment.common.Parkourability;
+import com.alrex.parcool.compat.SableLocalFrame;
 import com.alrex.parcool.config.ParCoolConfig;
 import com.alrex.parcool.utilities.WorldUtil;
 import net.minecraft.core.BlockPos;
@@ -108,7 +109,7 @@ public class WallJump extends Action {
 
 	@OnlyIn(Dist.CLIENT)
 	public boolean checkCanStart(Player player, Parkourability parkourability, ByteBuffer startInfo) {
-		Vec3 wallDirection = WorldUtil.getWall(player, player.getBbWidth() * 0.65);
+		Vec3 wallDirection = WorldUtil.getWallNotInFacing(player, player.getBbWidth() * 0.65);
 		Vec3 jumpDirection = getJumpDirection(player, wallDirection);
 		if (jumpDirection == null) return false;
 		ClingToCliff cling = parkourability.get(ClingToCliff.class);
@@ -150,6 +151,7 @@ public class WallJump extends Action {
 			type = WallJumpAnimationType.SwingLeftArm;
 		}
 
+        // Up-boost is along world-Y; sub-level orientation doesn't matter here.
         double lookAngleY = player.getLookAngle().normalize().y();
         if (lookAngleY > 0.5) { // Looking upward
             jumpDirection = jumpDirection.add(0, lookAngleY * 2, 0).normalize();
@@ -186,27 +188,25 @@ public class WallJump extends Action {
 		Vec3 wallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
 		Vec3 motion = player.getDeltaMovement();
 
-		BlockPos leanedBlock = new BlockPos(
-				Mth.floor(player.getX() + wallDirection.x()),
-				Mth.floor(player.getBoundingBox().minY + player.getBbHeight() * 0.25),
-				Mth.floor(player.getZ() + wallDirection.z())
-		);
+		BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
 		float slipperiness = player.getCommandSenderWorld().isLoaded(leanedBlock) ?
-				player.getCommandSenderWorld().getBlockState(leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
+				WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
 				: 0.6f;
 
-		double ySpeed;
+		// Player motion is world-aligned; applyDisplacement adds the sub-level's
+		// per-tick translation so we ride moving platforms.
+		SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
+		double motionUp = motion.y;
+		double jumpUp = jumpMotion.y;
+		double newUp;
 		if (slipperiness > 0.9) {// icy blocks
-			ySpeed = motion.y();
+			newUp = motionUp;
 		} else {
-            ySpeed = motion.y() > jumpMotion.y() ? motion.y + jumpMotion.y() : jumpMotion.y();
-            spawnJumpParticles(player, wallDirection, jumpDirection);
+			newUp = motionUp > jumpUp ? motionUp + jumpUp : jumpUp;
+			spawnJumpParticles(player, wallDirection, jumpDirection);
 		}
-		player.setDeltaMovement(
-                motion.x() + jumpMotion.x(),
-				ySpeed,
-                motion.z() + jumpMotion.z()
-		);
+		Vec3 horiz = new Vec3(motion.x + jumpMotion.x, 0, motion.z + jumpMotion.z);
+		player.setDeltaMovement(frame.applyDisplacement(horiz.add(0, newUp, 0)));
 
 		WallJumpAnimationType type = WallJumpAnimationType.fromCode(startData.get());
 		Animation animation = Animation.get(player);
@@ -230,13 +230,9 @@ public class WallJump extends Action {
             player.playSound(SoundEvents.WALL_JUMP.get(), 1f, 1f);
         Vec3 jumpDirection = new Vec3(startData.getDouble(), startData.getDouble(), startData.getDouble());
 		Vec3 wallDirection = new Vec3(startData.getDouble(), 0, startData.getDouble());
-        BlockPos leanedBlock = new BlockPos(
-				Mth.floor(player.getX() + wallDirection.x()),
-				Mth.floor(player.getBoundingBox().minY + player.getBbHeight() * 0.25),
-				Mth.floor(player.getZ() + wallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
         float slipperiness = player.level().isLoaded(leanedBlock) ?
-                player.level().getBlockState(leanedBlock).getFriction(player.level(), leanedBlock, player)
+                WorldUtil.getBlockStateAt(player.level(), leanedBlock).getFriction(player.level(), leanedBlock, player)
                 : 1f;
         if (slipperiness <= 0.9) {// icy blocks
             spawnJumpParticles(player, wallDirection, jumpDirection);
@@ -268,11 +264,7 @@ public class WallJump extends Action {
 		if (!ParCoolConfig.Client.Booleans.EnableActionParticles.get()) return;
 		Level level = player.level();
 		Vec3 pos = player.position();
-        BlockPos leanedBlock = new BlockPos(
-				Mth.floor(pos.x() + wallDirection.x()),
-				Mth.floor(pos.y() + player.getBbHeight() * 0.25),
-				Mth.floor(pos.z() + wallDirection.z())
-        );
+        BlockPos leanedBlock = WorldUtil.getClosestBlockToRelPositionFromEntityHeight(player, wallDirection, 0.25);
 		if (!level.isLoaded(leanedBlock)) return;
 		float width = player.getBbWidth();
 		BlockState blockstate = level.getBlockState(leanedBlock);

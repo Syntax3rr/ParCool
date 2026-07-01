@@ -118,7 +118,12 @@ public class WorldUtil {
 	// the wall's pitch. Vanilla blocks are axis-aligned, so y=0 in the common case.
 	private static Vec3 snapToSubLevelAxis(LivingEntity entity, Vec3 wall) {
 		if (!SableCompat.isLoaded()) return wall;
-		SableLocalFrame frame = SableLocalFrame.at(entity, 1.0);
+		return snapToSubLevelAxis(SableLocalFrame.at(entity, 1.0), wall);
+	}
+
+	// Frame-supplied variant for callers that already built one (avoids a second scan).
+	// `wall` is a horizontal direction; the returned axis carries the deck's roll/pitch.
+	public static Vec3 snapToSubLevelAxis(SableLocalFrame frame, Vec3 wall) {
 		if (!frame.isSubLevel()) return wall;
 
 		Vec3 best = null;
@@ -316,8 +321,10 @@ public class WorldUtil {
 		return getWallHeight(entity, wall, entity.getBbHeight(), entity.getBbHeight() / 18.0);
 	}
 
+	// World-space run direction of a hangable bar above the entity (unit vector, carries the
+	// bar's tilt on a sloped sub-level deck), or null if there's no bar to grab.
 	@Nullable
-	public static HangDown.BarAxis getHangableBars(LivingEntity entity) {
+	public static Vec3 getHangableBars(LivingEntity entity) {
 		final double bbWidth = entity.getBbWidth() / 4;
 		final double bbHeight = 0.35;
 		AABB bb = new AABB(
@@ -330,41 +337,53 @@ public class WorldUtil {
 		);
 		Level hangWorld = entity.getCommandSenderWorld();
 		if (!isBlocked(hangWorld, entity, bb)) return null;
-		BlockPos pos = new BlockPos(
-				Mth.floor(entity.getX()),
-				Mth.floor(entity.getY() + entity.getBbHeight() + 0.4),
-				Mth.floor(entity.getZ())
-		);
+		Vec3 headWorld = new Vec3(entity.getX(), entity.getY() + entity.getBbHeight() + 0.4, entity.getZ());
+		BlockPos pos = BlockPos.containing(headWorld);
 		if (!hangWorld.isLoaded(pos)) return null;
-		BlockState state = getBlockStateAt(hangWorld, pos);
-		Block block = state.getBlock();
-		HangDown.BarAxis axis = null;
-		if (block instanceof RotatedPillarBlock) {
-			if (state.isCollisionShapeFullBlock(hangWorld, pos)) {
-				return null;
+
+		// Sub-level bars don't sit on the world grid: sample at the exact head point in the
+		// sub-level's frame (a grid-centre sample lands in the wrong cell), then map the bar's
+		// local axis back to world via the deck's orientation.
+		BlockState state = hangWorld.getBlockState(pos);
+		SableLocalFrame frame = SableLocalFrame.WORLD;
+		if (state.isAir() && SableCompat.isLoaded()) {
+			BlockState subState = SableCompat.getSubLevelBlockStateAt(hangWorld, headWorld);
+			if (subState != null) {
+				state = subState;
+				frame = SableLocalFrame.at(entity, 0.5);
 			}
-			Direction.Axis pillarAxis = state.getValue(RotatedPillarBlock.AXIS);
-			switch (pillarAxis) {
-				case X:
-					axis = HangDown.BarAxis.X;
-					break;
-				case Z:
-					axis = HangDown.BarAxis.Z;
-					break;
+		}
+
+		Vec3 localDir = classifyBarAxis(state, hangWorld, pos);
+		if (localDir == null) return null;
+		if (!frame.isSubLevel()) return localDir;
+		// The bar runs along the sub-level's local X or Z; express that axis in world space
+		// (frame.localX/Z already carry the deck's roll/pitch so a sloped bar keeps its tilt).
+		Vec3 worldDir = localDir.x != 0 ? frame.localX() : frame.localZ();
+		return worldDir.lengthSqr() < 1e-9 ? localDir : worldDir.normalize();
+	}
+
+	private static final Vec3 BAR_LOCAL_X = new Vec3(1, 0, 0);
+	private static final Vec3 BAR_LOCAL_Z = new Vec3(0, 0, 1);
+
+	// The bar's run direction in the block's own frame ((1,0,0) or (0,0,1)), or null if
+	// `state` isn't a hangable bar.
+	@Nullable
+	private static Vec3 classifyBarAxis(BlockState state, Level world, BlockPos pos) {
+		Block block = state.getBlock();
+		if (block instanceof RotatedPillarBlock) {
+			if (state.isCollisionShapeFullBlock(world, pos)) return null;
+			switch (state.getValue(RotatedPillarBlock.AXIS)) {
+				case X: return BAR_LOCAL_X;
+				case Z: return BAR_LOCAL_Z;
+				default: return null;
 			}
 		} else if (block instanceof EndRodBlock) {
-			if (state.isCollisionShapeFullBlock(hangWorld, pos)) {
-				return null;
-			}
-			Direction direction = state.getValue(DirectionalBlock.FACING);
-			switch (direction) {
-				case EAST:
-				case WEST:
-					axis = HangDown.BarAxis.X;
-					break;
-				case NORTH:
-				case SOUTH:
-					axis = HangDown.BarAxis.Z;
+			if (state.isCollisionShapeFullBlock(world, pos)) return null;
+			switch (state.getValue(DirectionalBlock.FACING)) {
+				case EAST: case WEST: return BAR_LOCAL_X;
+				case NORTH: case SOUTH: return BAR_LOCAL_Z;
+				default: return null;
 			}
 		} else if (block instanceof CrossCollisionBlock) {
 			int zCount = 0;
@@ -373,8 +392,8 @@ public class WorldUtil {
 			if (state.getValue(CrossCollisionBlock.SOUTH)) zCount++;
 			if (state.getValue(CrossCollisionBlock.EAST)) xCount++;
 			if (state.getValue(CrossCollisionBlock.WEST)) xCount++;
-			if (zCount > 0 && xCount == 0) axis = HangDown.BarAxis.Z;
-			if (xCount > 0 && zCount == 0) axis = HangDown.BarAxis.X;
+			if (zCount > 0 && xCount == 0) return BAR_LOCAL_Z;
+			if (xCount > 0 && zCount == 0) return BAR_LOCAL_X;
 		} else if (block instanceof WallBlock) {
 			int zCount = 0;
 			int xCount = 0;
@@ -382,11 +401,10 @@ public class WorldUtil {
 			if (state.getValue(WallBlock.SOUTH_WALL) != WallSide.NONE) zCount++;
 			if (state.getValue(WallBlock.EAST_WALL) != WallSide.NONE) xCount++;
 			if (state.getValue(WallBlock.WEST_WALL) != WallSide.NONE) xCount++;
-			if (zCount > 0 && xCount == 0) axis = HangDown.BarAxis.Z;
-			if (xCount > 0 && zCount == 0) axis = HangDown.BarAxis.X;
+			if (zCount > 0 && xCount == 0) return BAR_LOCAL_Z;
+			if (xCount > 0 && zCount == 0) return BAR_LOCAL_X;
 		}
-
-		return axis;
+		return null;
 	}
 
     public static boolean existsSpaceBelow(LivingEntity entity) {

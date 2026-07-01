@@ -24,9 +24,6 @@ import java.nio.ByteBuffer;
 
 public class HangDown extends Action {
     private static final BehaviorEnforcer.ID ID_SNEAK_CANCEL = BehaviorEnforcer.newID();
-	public enum BarAxis {
-		X, Z
-	}
 
 	private double bodySwingAngleFactor = 0;
 	private float armSwingAmount = 0;
@@ -44,12 +41,28 @@ public class HangDown extends Action {
 		return orthogonalToBar;
 	}
 
+	// World-space run direction of the bar being hung from (unit, carries tilt on a sloped
+	// sub-level deck), or null when not hanging.
 	@Nullable
-	public BarAxis getHangingBarAxis() {
-		return hangingBarAxis;
+	public Vec3 getHangingBarDirection() {
+		return hangingBarDir;
 	}
 
-	private BarAxis hangingBarAxis = null;
+	private Vec3 hangingBarDir = null;
+
+	// Horizontal part of a (possibly tilted) bar direction, normalized; ZERO if vertical.
+	private static Vec3 horizontalBar(Vec3 dir) {
+		Vec3 h = new Vec3(dir.x, 0, dir.z);
+		return h.lengthSqr() < 1e-9 ? Vec3.ZERO : h.normalize();
+	}
+
+	// Player's body is more across the bar than along it (>45°): controls left/right slide.
+	private void updateOrthogonalToBar(Player player) {
+		Vec3 barH = hangingBarDir == null ? Vec3.ZERO : horizontalBar(hangingBarDir);
+		if (barH.lengthSqr() < 1e-9) { orthogonalToBar = false; return; }
+		Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot).normalize();
+		orthogonalToBar = Math.abs(bodyVec.dot(barH)) < 0.7071067811865476;
+	}
 
 	@OnlyIn(Dist.CLIENT)
 	@Override
@@ -79,10 +92,8 @@ public class HangDown extends Action {
 	private void setup(Player player, ByteBuffer startData) {
 		armSwingAmount = 0;
 		bodySwingAngleFactor = startData.getDouble();
-		hangingBarAxis = WorldUtil.getHangableBars(player);
-		Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot);
-		orthogonalToBar = (hangingBarAxis == BarAxis.X && Math.abs(bodyVec.x) < Math.abs(bodyVec.z))
-				|| (hangingBarAxis == BarAxis.Z && Math.abs(bodyVec.z) < Math.abs(bodyVec.x));
+		hangingBarDir = WorldUtil.getHangableBars(player);
+		updateOrthogonalToBar(player);
 		player.setDeltaMovement(0, 0, 0);
 		Animation animation = Animation.get(player);
 		if (animation != null) animation.setAnimator(new HangAnimator());
@@ -111,42 +122,38 @@ public class HangDown extends Action {
 	@OnlyIn(Dist.CLIENT)
 	@Override
     public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
-		Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot);
 		final double speed = 0.1;
-		double xSpeed = 0, zSpeed = 0;
-		// Floor tracking handles in-plane sub-level motion; only the localY component
-		// is composed here to avoid double-counting.
+		// Carry the bar's full per-tick motion: a hanging player isn't "standing on" the
+		// sub-level, so Sable doesn't track them and a moving bar would otherwise slide away.
 		SableLocalFrame frame = SableLocalFrame.at(player, 0.5);
-		Vec3 baseDelta = frame.localY().scale(frame.verticalComponent(frame.displacement()));
-		if (orthogonalToBar) {
-			if (hangingBarAxis == BarAxis.X) {
-				xSpeed = (bodyVec.z > 0 ? 1 : -1) * speed;
+		Vec3 baseDelta = frame.displacement();
+		Vec3 move = Vec3.ZERO;
+		if (hangingBarDir != null) {
+			Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot).normalize();
+			Vec3 barH = horizontalBar(hangingBarDir);
+			if (orthogonalToBar) {
+				// Body across the bar: left/right slide along it (sign keeps "left" intuitive).
+				Vec3 leftVec = bodyVec.yRot((float) (Math.PI / 2));
+				double sign = Math.signum(leftVec.dot(barH));
+				if (sign == 0) sign = 1;
+				if (KeyBindings.isKeyLeftDown()) move = hangingBarDir.scale(speed * sign);
+				else if (KeyBindings.isKeyRightDown()) move = hangingBarDir.scale(-speed * sign);
 			} else {
-				zSpeed = (bodyVec.x > 0 ? 1 : -1) * speed;
+				// Body along the bar: forward/back move along it (carries the bar's slope).
+				double sign = Math.signum(bodyVec.dot(barH));
+				if (sign == 0) sign = 1;
+				if (KeyBindings.isKeyForwardDown()) move = hangingBarDir.scale(speed * sign);
+				else if (KeyBindings.isKeyBackDown()) move = hangingBarDir.scale(-speed * sign);
 			}
-            if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(new Vec3(xSpeed, 0, -zSpeed).add(baseDelta));
-            else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(new Vec3(-xSpeed, 0, zSpeed).add(baseDelta));
-			else player.setDeltaMovement(baseDelta);
-		} else {
-			if (hangingBarAxis == BarAxis.X) {
-				xSpeed = (bodyVec.x > 0 ? 1 : -1) * speed;
-			} else {
-				zSpeed = (bodyVec.z > 0 ? 1 : -1) * speed;
-			}
-            if (KeyBindings.isKeyForwardDown()) player.setDeltaMovement(new Vec3(xSpeed, 0, zSpeed).add(baseDelta));
-            else if (KeyBindings.isKeyBackDown()) player.setDeltaMovement(new Vec3(-xSpeed, 0, -zSpeed).add(baseDelta));
-			else player.setDeltaMovement(baseDelta);
 		}
+		player.setDeltaMovement(move.add(baseDelta));
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
 	}
 
 	@Override
     public void onWorkingTickInClient(Player player, Parkourability parkourability) {
-		hangingBarAxis = WorldUtil.getHangableBars(player);
-		Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot);
-		orthogonalToBar =
-				(hangingBarAxis == BarAxis.X && Math.abs(bodyVec.x) < Math.abs(bodyVec.z))
-						|| (hangingBarAxis == BarAxis.Z && Math.abs(bodyVec.z) < Math.abs(bodyVec.x));
+		hangingBarDir = WorldUtil.getHangableBars(player);
+		updateOrthogonalToBar(player);
 		if (orthogonalToBar) {
 			bodySwingAngleFactor /= 1.05;
 		} else {
@@ -167,20 +174,25 @@ public class HangDown extends Action {
 	@OnlyIn(Dist.CLIENT)
 	@Override
     public void onRenderTick(RenderFrameEvent event, Player player, Parkourability parkourability) {
-		if (isDoing()) {
-			if (hangingBarAxis == null) return;
-			Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot).normalize();
-			Vec3 lookVec = player.getLookAngle();
-			Vec3 idealLookVec;
-			if (Math.abs(lookVec.x) > Math.abs(lookVec.z)) {
-				idealLookVec = new Vec3(lookVec.x > 0 ? 1 : -1, 0, 0);
-			} else {
-				idealLookVec = new Vec3(0, 0, lookVec.z > 0 ? 1 : -1);
-			}
-			double differenceAngle = Math.acos(bodyVec.dot(idealLookVec));
-			differenceAngle /= 4;
-			player.setYBodyRot((float) VectorUtil.toYawDegree(idealLookVec.yRot((float) differenceAngle)));
+		if (!isDoing() || hangingBarDir == null) return;
+		Vec3 barH = horizontalBar(hangingBarDir);
+		if (barH.lengthSqr() < 1e-9) return;
+		Vec3 perpH = barH.yRot((float) (Math.PI / 2));
+		Vec3 lookVec = player.getLookAngle().multiply(1, 0, 1);
+		if (lookVec.lengthSqr() < 1e-9) return;
+		lookVec = lookVec.normalize();
+		// Snap the body toward whichever bar-aligned / bar-perpendicular direction the look
+		// is nearest, so the player hangs cleanly along an arbitrarily-oriented bar.
+		Vec3 idealLookVec = barH;
+		double best = -2;
+		for (Vec3 cand : new Vec3[]{barH, barH.reverse(), perpH, perpH.reverse()}) {
+			double d = cand.dot(lookVec);
+			if (d > best) { best = d; idealLookVec = cand; }
 		}
+		Vec3 bodyVec = VectorUtil.fromYawDegree(player.yBodyRot).normalize();
+		double dot = Math.max(-1, Math.min(1, bodyVec.dot(idealLookVec)));
+		double differenceAngle = Math.acos(dot) / 4;
+		player.setYBodyRot((float) VectorUtil.toYawDegree(idealLookVec.yRot((float) differenceAngle)));
 	}
 
 	@Override

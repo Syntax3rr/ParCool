@@ -8,6 +8,7 @@ import com.alrex.parcool.common.attachment.common.Parkourability;
 import com.alrex.parcool.config.ParCoolConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 
 public class HangAnimator extends Animator {
@@ -18,7 +19,7 @@ public class HangAnimator extends Animator {
 	@Override
 	public void animatePost(Player player, Parkourability parkourability, PlayerModelTransformer transformer) {
 		HangDown hangDown = parkourability.get(HangDown.class);
-		HangDown.BarAxis axis = hangDown.getHangingBarAxis();
+		Vec3 axis = hangDown.getHangingBarDirection();
 		if (axis == null) return;
 		boolean orthogonal = hangDown.isOrthogonalToBar();
         transformer

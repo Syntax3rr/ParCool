@@ -29,6 +29,12 @@ public class SableCompat {
     }
 
     @Nullable
+    public static BlockState getSubLevelBlockStateAt(Level level, Vec3 worldPos) {
+        if (!LOADED) return null;
+        return SableCompatImpl.getSubLevelBlockStateAt(level, worldPos);
+    }
+
+    @Nullable
     public static BlockState getSubLevelFloorBlockState(Level level, Vec3 worldFootPos) {
         if (!LOADED) return null;
         return SableCompatImpl.getSubLevelFloorBlockState(level, worldFootPos);

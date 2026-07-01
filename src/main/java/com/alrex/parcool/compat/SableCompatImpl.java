@@ -41,11 +41,18 @@ class SableCompatImpl {
     // keys on the sub-level's plot (storage) chunk, not its arbitrary logical pose.
     @Nullable
     static BlockState getSubLevelBlockState(Level level, BlockPos pos) {
-        Vec3 worldCenter = Vec3.atCenterOf(pos);
-        BoundingBox3d box = new BoundingBox3d(new AABB(pos));
+        return getSubLevelBlockStateAt(level, Vec3.atCenterOf(pos));
+    }
+
+    // Samples the block at an exact world point rather than a block-grid centre, so it
+    // lands in the right cell even when the sub-level is translated/rotated off the world
+    // grid (callers reading a feature at a precise spot, e.g. a hang bar above the head).
+    @Nullable
+    static BlockState getSubLevelBlockStateAt(Level level, Vec3 worldPos) {
+        BoundingBox3d box = new BoundingBox3d(new AABB(BlockPos.containing(worldPos)));
         for (SubLevelAccess sla : SableCompanion.INSTANCE.getAllIntersecting(level, box)) {
             if (sla instanceof SubLevel subLevel) {
-                Vec3 local = sla.logicalPose().transformPositionInverse(worldCenter);
+                Vec3 local = sla.logicalPose().transformPositionInverse(worldPos);
                 BlockState state = subLevel.getLevel().getBlockState(
                         BlockPos.containing(local.x, local.y, local.z));
                 if (!state.isAir()) return state;
@@ -130,11 +137,18 @@ class SableCompatImpl {
         BoundingBox3d box = new BoundingBox3d(searchAABB);
         for (SubLevelAccess sla : SableCompanion.INSTANCE.getAllIntersecting(level, box)) {
             if (sla instanceof SubLevel) {
-                Vec3[] axes = computeLocalAxesInWorld(sla.logicalPose(), searchAABB.getCenter());
+                Pose3dc pose = sla.logicalPose();
+                Vec3[] axes = computeLocalAxesInWorld(pose, searchAABB.getCenter());
                 Pose3dc last = sla.lastPose();
-                Vec3 disp = last == null ? Vec3.ZERO
-                        : sla.logicalPose().transformPosition(last.transformPositionInverse(pos)).subtract(pos);
-                return new SableLocalFrame(axes[0], axes[1], axes[2], disp, true);
+                Vec3 disp = Vec3.ZERO;
+                Vec3 translation = Vec3.ZERO;
+                if (last != null) {
+                    // Full motion at the player's position (rotation included)...
+                    disp = pose.transformPosition(last.transformPositionInverse(pos)).subtract(pos);
+                    // ...and the sub-level's rotation-free translation (motion of its origin).
+                    translation = pose.transformPosition(Vec3.ZERO).subtract(last.transformPosition(Vec3.ZERO));
+                }
+                return new SableLocalFrame(axes[0], axes[1], axes[2], disp, translation, true);
             }
         }
         return null;

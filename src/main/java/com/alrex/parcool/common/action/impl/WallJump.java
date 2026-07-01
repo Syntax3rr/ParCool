@@ -193,8 +193,9 @@ public class WallJump extends Action {
 				WorldUtil.getBlockStateAt(player.getCommandSenderWorld(), leanedBlock).getFriction(player.getCommandSenderWorld(), leanedBlock, player)
 				: 0.6f;
 
-		// Player motion is world-aligned; applyDisplacement adds the sub-level's
-		// per-tick translation so we ride moving platforms.
+		// Player motion is world-aligned; applyTranslation adds the sub-level's rotation-free
+		// per-tick translation so we ride moving platforms. Translation (not full displacement)
+		// so jumping off a spinning deck isn't flung away by its tangential velocity.
 		SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.65 + 0.5);
 		double motionUp = motion.y;
 		double jumpUp = jumpMotion.y;
@@ -206,7 +207,7 @@ public class WallJump extends Action {
 			spawnJumpParticles(player, wallDirection, jumpDirection);
 		}
 		Vec3 horiz = new Vec3(motion.x + jumpMotion.x, 0, motion.z + jumpMotion.z);
-		player.setDeltaMovement(frame.applyDisplacement(horiz.add(0, newUp, 0)));
+		player.setDeltaMovement(frame.applyTranslation(horiz.add(0, newUp, 0)));
 
 		WallJumpAnimationType type = WallJumpAnimationType.fromCode(startData.get());
 		Animation animation = Animation.get(player);

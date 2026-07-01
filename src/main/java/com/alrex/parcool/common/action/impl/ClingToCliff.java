@@ -121,17 +121,22 @@ public class ClingToCliff extends Action {
 	@Override
 	public void onWorkingTickInLocalClient(Player player, Parkourability parkourability) {
         armSwingAmount += (float) player.getDeltaMovement().multiply(1, 0, 1).lengthSqr();
-        // Gravity is along world-Y, so only carry sub-level Y motion for moving platforms.
+        // Carry the sub-level's full per-tick motion so the player stays glued to a moving
+        // wall (Sable doesn't track entities clinging to a side they aren't standing on, so
+        // dropping the horizontal part left them behind / pushed off the wall).
         SableLocalFrame frame = SableLocalFrame.at(player, player.getBbWidth() * 0.5 + 0.5);
-        Vec3 baseDelta = new Vec3(0, frame.displacement().y, 0);
+        Vec3 baseDelta = frame.displacement();
         if (KeyBindings.isLeftAndRightDown()) {
 			player.setDeltaMovement(baseDelta);
 		} else {
 			if (clingWallDirection != null && facingDirection == FacingDirection.ToWall) {
-				// uprightAxis is the sub-level's "up" re-signed to point world-up: traversal
-				// follows tilted decks without flipping on sideways/upside-down ones.
-				Vec3 traversal = frame.uprightAxis().cross(clingWallDirection.normalize()).normalize();
-				Vec3 vec = traversal.scale(0.1);
+				// Traverse along the wall's true width axis (its third sub-level axis, found by
+				// crossing the deck's up with its wall normal) so sidestepping follows a rolled
+				// or sloped deck instead of staying world-level and drifting off the surface.
+				Vec3 wallNormal = WorldUtil.snapToSubLevelAxis(frame, clingWallDirection.normalize());
+				Vec3 traversal = frame.uprightAxis().cross(wallNormal);
+				if (traversal.lengthSqr() < 1e-6) traversal = frame.uprightAxis().cross(clingWallDirection.normalize());
+				Vec3 vec = traversal.normalize().scale(0.1);
                 if (KeyBindings.isKeyLeftDown()) player.setDeltaMovement(vec.add(baseDelta));
                 else if (KeyBindings.isKeyRightDown()) player.setDeltaMovement(vec.reverse().add(baseDelta));
 				else player.setDeltaMovement(baseDelta);
